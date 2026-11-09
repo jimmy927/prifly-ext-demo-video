@@ -59,7 +59,9 @@ test("dry-run starts in the background, shows progress, refuses a second run and
   expect(before.dryRun).toMatchObject({ running: false, runningVideo: null, last: null });
   const started = await s.ask("dry-run", { id: a });
   expect(started).toMatchObject({ running: true, runningVideo: a });
-  await until(async () => (await s.ask("dry-run", null, { id: a })).progress?.line.startsWith("Building"));
+  await until(async () =>
+    (await s.ask("dry-run", null, { id: a })).progress?.line.startsWith("Building"),
+  );
   // Another video's run waits its turn: it is not started, and says whose runs.
   const other = await s.ask("dry-run", { id: b });
   expect(other).toMatchObject({ running: false, runningVideo: a });
@@ -88,7 +90,9 @@ test("still answers a scene's PNG as a data: URL, and refuses one with no still 
   expect(still.dataUrl).toBe(`data:image/png;base64,${Buffer.from(PNG).toString("base64")}`);
   expect(typeof still.at).toBe("number");
   await expect(s.ask("still", null, { id, scene: "../brief" })).rejects.toThrow("Not a scene id");
-  await expect(s.ask("still", null, { id: "ghost", scene: "pain" })).rejects.toThrow("No video ghost");
+  await expect(s.ask("still", null, { id: "ghost", scene: "pain" })).rejects.toThrow(
+    "No video ghost",
+  );
 });
 
 test("a failing step comes back on the route and in the tool's answer", async () => {
@@ -130,5 +134,7 @@ test("a run that stops before the scenes (no harness) says why on the route", as
   const id = await videoWith(s, "V", []);
   await s.ask("dry-run", { id });
   await until(async () => (await s.ask("dry-run", null, { id })).running === false);
-  expect((await s.ask("dry-run", null, { id })).error).toBe("No chrome-headless-shell for this machine");
+  expect((await s.ask("dry-run", null, { id })).error).toBe(
+    "No chrome-headless-shell for this machine",
+  );
 });

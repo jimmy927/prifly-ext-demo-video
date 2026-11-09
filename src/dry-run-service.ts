@@ -88,6 +88,7 @@ export function dryRunService(
       return { result: await same, error: runs.errorOf(id), busyWith: null };
     },
     async still(id, scene) {
+      await store().entry(id);
       if (!SCENE_ID.test(scene)) throw new Error(`Not a scene id: ${scene}`);
       const file = join(stills(id), `${scene}.png`);
       let bytes: Buffer;

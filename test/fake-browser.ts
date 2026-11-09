@@ -94,7 +94,9 @@ export function fakePage(
 }
 
 /** A launcher that hands out `page` and counts how many browsers ran at once. */
-export function fakeLauncher(page: Page): LaunchBrowser & { launched: number; closed: number; most: number } {
+export function fakeLauncher(
+  page: Page,
+): LaunchBrowser & { launched: number; closed: number; most: number } {
   let open = 0;
   const launcher = Object.assign(
     async (): Promise<Browser> => {

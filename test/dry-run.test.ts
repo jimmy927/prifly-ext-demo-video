@@ -139,7 +139,10 @@ test("a hidden target, a covered one and a slow wait-for each fail with their re
 
 test("a wait-for passes when the element shows before its time is up", async () => {
   const page = fakePage({ "#late": { appearsAfterWaits: 3 } });
-  const result = await runScene(deps(page).deps, scene("s", [{ kind: "wait-for", selector: "#late" }]));
+  const result = await runScene(
+    deps(page).deps,
+    scene("s", [{ kind: "wait-for", selector: "#late" }]),
+  );
   expect(result.ok).toBe(true);
 });
 
@@ -147,7 +150,11 @@ test("a page that does not open, and a live source, fail the scene without a sti
   const page = fakePage({}, { failOpen: "The page did not finish drawing within 15 s" });
   const { deps: d, saved } = deps(page);
   const broken = await runScene(d, scene("a", []));
-  expect(broken).toMatchObject({ ok: false, error: "The page did not finish drawing within 15 s", still: null });
+  expect(broken).toMatchObject({
+    ok: false,
+    error: "The page did not finish drawing within 15 s",
+    still: null,
+  });
   const live = await runScene(d, scene("b", [], { kind: "live", url: "http://localhost:5301/" }));
   expect(live.error).toContain("live sources");
   expect(saved).toEqual([]);
@@ -220,7 +227,11 @@ test("the browser is closed when a step throws, and the lock lets the next one i
     throw new Error("CDP connection closed");
   };
   await expect(
-    dryRun({ launch, harness: async () => PAGE }, [scene("a", [{ kind: "click", selector: "#x" }])], mkdtempSync(join(tmpdir(), "dry-run-"))),
+    dryRun(
+      { launch, harness: async () => PAGE },
+      [scene("a", [{ kind: "click", selector: "#x" }])],
+      mkdtempSync(join(tmpdir(), "dry-run-")),
+    ),
   ).rejects.toThrow("CDP connection closed");
   expect(launch.closed).toBe(1);
   expect(await withBrowser(launch, async () => "next")).toBe("next");
@@ -229,7 +240,13 @@ test("the browser is closed when a step throws, and the lock lets the next one i
 test("two browsers never run at once", async () => {
   const launch = fakeLauncher(fakePage({}));
   let release = () => {};
-  const first = withBrowser(launch, () => new Promise<void>((done) => { release = done; }));
+  const first = withBrowser(
+    launch,
+    () =>
+      new Promise<void>((done) => {
+        release = done;
+      }),
+  );
   const second = withBrowser(launch, async () => "second");
   await Bun.sleep(5);
   expect(launch.launched).toBe(1);
@@ -249,7 +266,11 @@ test("DryRuns runs one at a time and keeps why a run stopped", async () => {
     });
   });
   expect(first.started).toBe(true);
-  expect(runs.status()).toMatchObject({ state: "running", video: "a", progress: { line: "Scene 2 of 2" } });
+  expect(runs.status()).toMatchObject({
+    state: "running",
+    video: "a",
+    progress: { line: "Scene 2 of 2" },
+  });
   expect(runs.start("b", async () => ({ at: 1, ok: true, summary: "", scenes: [] }))).toEqual({
     started: false,
     running: "a",
