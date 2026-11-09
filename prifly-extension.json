@@ -53,6 +53,27 @@
         "en-US-GuyNeural",
         "en-US-JennyNeural"
       ]
+    },
+    {
+      "id": "odiCheckout",
+      "label": "ODI checkout",
+      "description": "The ODI checkout the dry run builds the mockup harness from (its HEAD commit, in a throwaway worktree). On Windows a path inside WSL.",
+      "type": "string",
+      "default": "~/src/odi"
+    },
+    {
+      "id": "priflyCheckout",
+      "label": "prifly checkout",
+      "description": "The prifly checkout the dry run builds the desktop-web preview harness from. On Windows a path inside WSL.",
+      "type": "string",
+      "default": "~/src/prifly"
+    },
+    {
+      "id": "wslDistro",
+      "label": "WSL distribution",
+      "description": "On Windows, the WSL distribution that holds the checkouts; empty for the default one.",
+      "type": "string",
+      "default": ""
     }
   ]
 }

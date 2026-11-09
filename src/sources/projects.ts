@@ -34,7 +34,10 @@ export type ProjectSpec = {
   /** The targets every page of this project holds, besides those scenes name. */
   defaultTarget: (name: string) => boolean;
   /** The files written into the worktree, by path relative to its top. */
-  files(targets: readonly string[], read: (relative: string) => Promise<string>): Promise<Record<string, string>>;
+  files(
+    targets: readonly string[],
+    read: (relative: string) => Promise<string>,
+  ): Promise<Record<string, string>>;
   /** The build: folder relative to the worktree, and the arguments after the runtime (`bun`). */
   build: { cwd: string; args: readonly string[] };
   /** The built page, relative to the worktree. */
@@ -66,8 +69,8 @@ function odiEntry(targets: readonly string[], licence: string): string {
     'const name = new URLSearchParams(location.search).get("target") ?? "";',
     "const chosen = targets[name];",
     "if (chosen === undefined) {",
-    '\tdocument.body.textContent = `No mockup target ${name}`;',
-    "\tthrow new Error(`No mockup target ${name}`);",
+    '\tdocument.body.textContent = "No mockup target " + name;',
+    '\tthrow new Error("No mockup target " + name);',
     "}",
     "mountMockup(chosen);",
     "",
@@ -90,7 +93,14 @@ const odi: ProjectSpec = {
   },
   build: {
     cwd: ".",
-    args: ["node_modules/vite/bin/vite.js", "build", "--config", "vite.mockup.config.ts", "--logLevel", "warn"],
+    args: [
+      "node_modules/vite/bin/vite.js",
+      "build",
+      "--config",
+      "vite.mockup.config.ts",
+      "--logLevel",
+      "warn",
+    ],
   },
   page: "dist-mockup/mockup.html",
   ready: { ready: "#root > *", busy: '#root [role="progressbar"]' },
@@ -168,7 +178,10 @@ const prifly: ProjectSpec = {
     const preview = await read("apps/desktop-web/preview.html");
     const html = preview
       .replace(/\s*<link rel="icon"[^>]*>/, "")
-      .replace(/src="\/src\/fixtures\/preview-main\.tsx"/, 'src="./src/fixtures/demo-studio-entry.tsx"');
+      .replace(
+        /src="\/src\/fixtures\/preview-main\.tsx"/,
+        'src="./src/fixtures/demo-studio-entry.tsx"',
+      );
     return {
       "apps/desktop-web/demo-studio.html": html,
       "apps/desktop-web/src/fixtures/demo-studio-entry.tsx": PRIFLY_ENTRY,
@@ -177,7 +190,12 @@ const prifly: ProjectSpec = {
   },
   build: {
     cwd: "apps/desktop-web",
-    args: ["../../node_modules/vite/bin/vite.js", "build", "--config", "vite.demo-studio.config.ts"],
+    args: [
+      "../../node_modules/vite/bin/vite.js",
+      "build",
+      "--config",
+      "vite.demo-studio.config.ts",
+    ],
   },
   page: "apps/desktop-web/dist-demo-studio/demo-studio.html",
   ready: { ready: "#root > *" },

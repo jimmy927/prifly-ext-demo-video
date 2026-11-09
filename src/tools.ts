@@ -1,10 +1,12 @@
 /**
  * The MCP tools every session sees as `mcp__prifly__demo_*`. Reads run at
  * once. The two writes (`demo_brief_set`, `demo_script_set`) change only this
- * extension's own files in the video's folder, so they show no confirm card.
+ * extension's own files in the video's folder, so they show no confirm card;
+ * `demo_dry_run` writes only the video's stills.
  */
 
 import type { ExtensionTool } from "@prifly/extension-api";
+import { type DryRunService, dryRunText } from "./dry-run-service";
 import { type Brief, PRODUCTS } from "./scenes";
 import { reportText, saveScript } from "./script";
 import type { Store } from "./store";
@@ -33,8 +35,15 @@ function briefLines(brief: Brief): string {
   return json(brief);
 }
 
-export function demoTools(store: () => Store): ExtensionTool[] {
+export function demoTools(store: () => Store, dryRun: () => DryRunService): ExtensionTool[] {
   return [
+    {
+      name: "demo_dry_run",
+      description:
+        "Dry-runs a video's script: opens every scene's harness page (built from the product's own mockup harness at its checkout's HEAD commit, in a throwaway worktree) in Demo studio's own headless browser, performs each step (click, hover, type, scroll, wait-for; zoom-hint only records its target), checks every target exists, is visible and that each click lands on it, and takes one still per scene for the Storyboard. Answers with one line, '5 of 5 scenes, every click landed', or the scene, step and selector that failed, then each scene. Waits until it ends (a first build takes about half a minute); only one dry run runs at a time. Changes only the video's own stills.",
+      inputSchema: objectSchema({ video: VIDEO }, ["video"]),
+      call: async (args) => dryRunText(await dryRun().runAndWait(videoArg(args))),
+    },
     {
       name: "demo_list",
       description:

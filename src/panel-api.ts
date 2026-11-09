@@ -5,6 +5,7 @@
  */
 
 import type { PanelRequest, SettingValues } from "@prifly/extension-api";
+import type { DryRunService } from "./dry-run-service";
 import { PRODUCTS, REVIEW_STATUSES, type ReviewStatus } from "./scenes";
 import { reportOn, saveScript } from "./script";
 import type { Store } from "./store";
@@ -14,11 +15,12 @@ export type PanelContext = {
   store: () => Store;
   settings: () => SettingValues | undefined;
   features: () => readonly string[];
+  dryRun: () => DryRunService;
 };
 
 export const NOT_YET = {
   available: false,
-  message: "Not available yet: the recorder and renderer come in a later version of Demo studio.",
+  message: "Not available yet: the renderer comes in a later version of Demo studio.",
 };
 
 function field(body: unknown, key: string): unknown {
@@ -41,7 +43,15 @@ async function video(context: PanelContext, id: string) {
     store.readScenes(id),
     store.sessionOf(id),
   ]);
-  return { entry, brief, ...reportOn(read.scenes, brief), problems: read.problems, session };
+  const dryRun = await context.dryRun().view(id);
+  return {
+    entry,
+    brief,
+    ...reportOn(read.scenes, brief),
+    problems: read.problems,
+    session,
+    dryRun,
+  };
 }
 
 function config(context: PanelContext) {
@@ -106,7 +116,14 @@ export async function answerPanel(context: PanelContext, request: PanelRequest):
       );
       return await video(context, id);
     }
-    case "dry-run":
+    case "dry-run": {
+      // POST starts one (unless one runs); GET reads how it goes. Either answers at once.
+      if (body === null || body === undefined)
+        return await context.dryRun().view(query["id"] ?? "");
+      return await context.dryRun().start(text(body, "id"));
+    }
+    case "still":
+      return await context.dryRun().still(query["id"] ?? "", query["scene"] ?? "");
     case "render":
     case "export":
       return NOT_YET;

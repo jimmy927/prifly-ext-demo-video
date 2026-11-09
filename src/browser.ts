@@ -68,8 +68,15 @@ export async function headlessShell(): Promise<string> {
     await Bun.write(zip, response);
     // Windows 10 and later carry bsdtar, which reads zip; elsewhere unzip.
     const argv =
-      process.platform === "win32" ? ["tar", "-xf", zip, "-C", own] : ["unzip", "-q", "-o", zip, "-d", own];
-    const proc = Bun.spawn(argv, { stdin: "ignore", stdout: "ignore", stderr: "pipe", windowsHide: true });
+      process.platform === "win32"
+        ? ["tar", "-xf", zip, "-C", own]
+        : ["unzip", "-q", "-o", zip, "-d", own];
+    const proc = Bun.spawn(argv, {
+      stdin: "ignore",
+      stdout: "ignore",
+      stderr: "pipe",
+      windowsHide: true,
+    });
     if ((await proc.exited) !== 0) {
       throw new Error(`Unpacking the browser failed: ${await new Response(proc.stderr).text()}`);
     }
@@ -171,7 +178,10 @@ function probeScript(selector: string): string {
   })()`;
 }
 
-type Evaluated = { result: { value?: unknown }; exceptionDetails?: { text?: string; exception?: { description?: string } } };
+type Evaluated = {
+  result: { value?: unknown };
+  exceptionDetails?: { text?: string; exception?: { description?: string } };
+};
 
 /** Navigates and waits for the page's load event. */
 async function navigate(session: CdpSession, url: string): Promise<void> {
@@ -186,7 +196,10 @@ async function navigate(session: CdpSession, url: string): Promise<void> {
     }
     let timer: ReturnType<typeof setTimeout> | undefined;
     const late = new Promise<never>((_, fail) => {
-      timer = setTimeout(() => fail(new Error(`The page did not load within 30 s: ${url}`)), 30_000);
+      timer = setTimeout(
+        () => fail(new Error(`The page did not load within 30 s: ${url}`)),
+        30_000,
+      );
     });
     await Promise.race([loaded, late]).finally(() => clearTimeout(timer));
   } finally {
@@ -198,7 +211,8 @@ async function navigate(session: CdpSession, url: string): Promise<void> {
 export function cdpPage(session: CdpSession): Page {
   const errors: string[] = [];
   session.on("Runtime.exceptionThrown", (params) => {
-    const details = (params as { exceptionDetails?: Evaluated["exceptionDetails"] }).exceptionDetails;
+    const details = (params as { exceptionDetails?: Evaluated["exceptionDetails"] })
+      .exceptionDetails;
     errors.push(details?.exception?.description ?? details?.text ?? "an uncaught error");
   });
   const evaluate = async <T>(expression: string): Promise<T> => {

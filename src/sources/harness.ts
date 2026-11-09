@@ -18,8 +18,8 @@ import { createHash } from "node:crypto";
 import { mkdir, readFile, rename, rm, rmdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
-import type { Product } from "../scenes";
 import { expandHome, failure, type RepoShell } from "../exec";
+import type { Product } from "../scenes";
 import { composeSingleFile } from "./compose";
 import { PROJECTS, type ProjectSpec, targetsIn } from "./projects";
 
@@ -72,7 +72,12 @@ export function cacheName(project: Product, commit: string, targets: readonly st
 }
 
 /** The targets the page holds: the project's defaults and every one asked for, each checked. */
-export function chooseTargets(spec: ProjectSpec, available: readonly string[], asked: readonly string[], commit: string): string[] {
+export function chooseTargets(
+  spec: ProjectSpec,
+  available: readonly string[],
+  asked: readonly string[],
+  commit: string,
+): string[] {
   const missing = asked.filter((name) => !available.includes(name));
   if (missing.length > 0) {
     const known = available.filter(spec.defaultTarget).join(", ");
@@ -102,7 +107,9 @@ export async function harnessPage(
   const available =
     spec.targetsDir === null
       ? [...spec.fixedTargets]
-      : targetsIn(await git(shell, repo, ["ls-tree", "--name-only", commit, `${spec.targetsDir}/`]));
+      : targetsIn(
+          await git(shell, repo, ["ls-tree", "--name-only", commit, `${spec.targetsDir}/`]),
+        );
   const targets = chooseTargets(spec, available, asked, commit);
   const file = join(deps.cacheDir, cacheName(project, commit, targets));
   if (await exists(file)) return { project, commit, file, targets, built: false };
@@ -125,7 +132,10 @@ async function buildInWorktree(
 ): Promise<string> {
   const { shell } = deps;
   const buildDir = join(videoFolder, "build");
-  const tree = join(buildDir, `${spec.id}-${commit.slice(0, 8)}-${crypto.randomUUID().slice(0, 8)}`);
+  const tree = join(
+    buildDir,
+    `${spec.id}-${commit.slice(0, 8)}-${crypto.randomUUID().slice(0, 8)}`,
+  );
   const there = shell.toRepoPath(tree);
   await mkdir(buildDir, { recursive: true });
   await git(shell, repo, ["worktree", "add", "--detach", there, commit]);
@@ -151,7 +161,9 @@ async function buildInWorktree(
     if (ran.code !== 0) throw failure(`The ${spec.id} harness build`, ran);
     const page = join(tree, spec.page);
     const html = await readFile(page, "utf8");
-    return await composeSingleFile(html, (relative) => readFile(join(dirname(page), relative), "utf8"));
+    return await composeSingleFile(html, (relative) =>
+      readFile(join(dirname(page), relative), "utf8"),
+    );
   } finally {
     await removeWorktree(shell, repo, tree, there, linked);
   }

@@ -32,7 +32,14 @@ export type StepFailure = {
   reason: string;
 };
 
-export type ZoomTarget = { step: number; selector: string; x: number; y: number; width: number; height: number };
+export type ZoomTarget = {
+  step: number;
+  selector: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
 
 export type SceneResult = {
   id: string;
@@ -76,7 +83,12 @@ async function target(page: Page, selector: string, within: number) {
 }
 
 /** One step; null when it passed, else why it failed. */
-async function runStep(page: Page, step: Step, index: number, zoom: ZoomTarget[]): Promise<string | null> {
+async function runStep(
+  page: Page,
+  step: Step,
+  index: number,
+  zoom: ZoomTarget[],
+): Promise<string | null> {
   const within = step.kind === "wait-for" ? (step.timeoutMs ?? WAIT_FOR_MS) : APPEAR_MS;
   const found = await target(page, step.selector, within);
   if (!("probe" in found)) return found.reason;
@@ -135,7 +147,9 @@ export async function runScene(deps: SceneRunDeps, scene: Scene): Promise<SceneR
     const built = await deps.pageOf(source.project);
     await deps.page.open(sceneUrl(built.file, source.target, source.state), {
       ...spec.ready,
-      ...(spec.hide.length === 0 ? {} : { css: `${spec.hide.join(", ")} { display: none !important; }` }),
+      ...(spec.hide.length === 0
+        ? {}
+        : { css: `${spec.hide.join(", ")} { display: none !important; }` }),
     });
   } catch (caught) {
     result.error = caught instanceof Error ? caught.message : String(caught);
@@ -170,7 +184,10 @@ export function summarize(results: readonly SceneResult[]): string {
     bad.failure !== null
       ? `step ${bad.failure.step} ${bad.failure.kind} ${JSON.stringify(bad.failure.selector)} ${bad.failure.reason}`
       : `could not be opened: ${bad.error ?? "unknown"}`;
-  const more = total - passed > 1 ? ` (${total - passed - 1} more scene${total - passed - 1 === 1 ? "" : "s"} failed too)` : "";
+  const more =
+    total - passed > 1
+      ? ` (${total - passed - 1} more scene${total - passed - 1 === 1 ? "" : "s"} failed too)`
+      : "";
   return `${passed} of ${total} scenes passed; ${where} ${why}${more}`;
 }
 
@@ -179,7 +196,11 @@ export type Progress = { done: number; total: number; line: string };
 export type DryRunDeps = {
   launch: LaunchBrowser;
   /** Builds or finds a project's page; `progress` hears what the build does. */
-  harness: (project: Product, targets: readonly string[], progress: (line: string) => void) => Promise<HarnessPage>;
+  harness: (
+    project: Product,
+    targets: readonly string[],
+    progress: (line: string) => void,
+  ) => Promise<HarnessPage>;
 };
 
 /** Every scene of a video, in one browser; stills go into `stillsDir`. */
@@ -252,13 +273,23 @@ export type DryRunStatus =
  * started, or which video's run is already going. The panel polls `status`.
  */
 export class DryRuns {
-  private current: { video: string; progress: Progress; startedAt: number; done: Promise<DryRunResult | null> } | null = null;
+  private current: {
+    video: string;
+    progress: Progress;
+    startedAt: number;
+    done: Promise<DryRunResult | null>;
+  } | null = null;
   private lastError = new Map<string, string>();
 
   status(): DryRunStatus {
     const current = this.current;
     if (current === null) return { state: "idle", video: null };
-    return { state: "running", video: current.video, progress: current.progress, startedAt: current.startedAt };
+    return {
+      state: "running",
+      video: current.video,
+      progress: current.progress,
+      startedAt: current.startedAt,
+    };
   }
 
   /** Why the last run of `video` failed outright (not a scene failing: the run itself); null when it did not. */
@@ -266,9 +297,10 @@ export class DryRuns {
     return this.lastError.get(video) ?? null;
   }
 
-  start(video: string, run: (onProgress: (progress: Progress) => void) => Promise<DryRunResult>):
-    | { started: true; done: Promise<DryRunResult | null> }
-    | { started: false; running: string } {
+  start(
+    video: string,
+    run: (onProgress: (progress: Progress) => void) => Promise<DryRunResult>,
+  ): { started: true; done: Promise<DryRunResult | null> } | { started: false; running: string } {
     if (this.current !== null) return { started: false, running: this.current.video };
     this.lastError.delete(video);
     const progress: Progress = { done: 0, total: 0, line: "Starting…" };
