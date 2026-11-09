@@ -10,7 +10,7 @@ async function newVideo(s: ReturnType<typeof studio>, title = "Hero video") {
 
 const words = (n: number) => Array.from({ length: n }, () => "word").join(" ");
 
-test("activate registers the six tools, none of which asks the reader", async () => {
+test("activate registers the seven tools, none of which asks the reader", async () => {
   const s = studio();
   expect(s.fake.tools().map((tool) => tool.name)).toEqual([
     "demo_list",
@@ -18,6 +18,7 @@ test("activate registers the six tools, none of which asks the reader", async ()
     "demo_brief_set",
     "demo_script_set",
     "demo_notes",
+    "demo_render",
     "demo_dry_run",
   ]);
   const id = await newVideo(s);
