@@ -15,6 +15,8 @@ export const S = {
   /** The script editor's working copy of the scenes. */
   work: [],
   busy: false,
+  /** A dry run is being asked to start. */
+  starting: false,
   /** Set by app.js: redraws the tab body. */
   redraw: () => {},
 };
