@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@jimmy927/devwire": "github:jimmy927/devwire#v0.1.0",
+    "@jimmy927/edge-tts": "github:jimmy927/edge-tts#v0.1.1",
     "zod": "^3.24.1"
   },
   "devDependencies": {
