@@ -11,7 +11,7 @@ import { $, call, el, setNotice } from "./ui.js";
 
 const stills = new Map();
 let polling = null;
-const view = { language: null, final: false, samples: null, samplesLoading: false };
+const view = { video: null, language: null, final: false, samples: null, samplesLoading: false };
 
 const render = () => S.data?.render ?? null;
 const busy = () => S.starting || (render()?.runningVideo ?? null) !== null;
@@ -111,7 +111,9 @@ function poll() {
     if (next.runningVideo === null) {
       clearInterval(polling);
       polling = null;
-      S.redraw();
+      // Only the Video tab shows what a finished render changes; another tab may hold typing.
+      if (S.tab === "video") S.redraw();
+      else paint();
       return;
     }
     paint();
@@ -204,7 +206,9 @@ function timeline() {
   for (const part of parts) {
     const scene = S.data.scenes.find((each) => each.id === part.id);
     const image = el("img", { alt: scene?.title ?? part.id });
-    void fetchStill(image, part.id);
+    // A scene the dry run never reached has no still: its cell stays plain.
+    const dry = S.data.dryRun?.last?.scenes.find((each) => each.id === part.id);
+    if ((dry?.still ?? null) !== null) void fetchStill(image, part.id);
     const pins = (scene?.review.notes ?? [])
       .filter((note) => noteTime(note) !== null)
       .map((note) => {
@@ -338,6 +342,11 @@ function samplesRow(rerender) {
 }
 
 export function videoTab(rerender) {
+  if (view.video !== S.id) {
+    view.video = S.id;
+    view.language = null;
+    view.samples = null;
+  }
   const dry = el(
     "button",
     { type: "button", id: "video-dry-run", disabled: dryDisabled() },

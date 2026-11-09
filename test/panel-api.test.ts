@@ -18,8 +18,10 @@ test("config says whether the host has panel-media, and which voices and key", a
     elevenLabsKey: false,
     voices: { sv: "sv-SE-SofieNeural", en: "en-GB-SoniaNeural" },
   });
-  const withMedia = await studio({ features: ["panel-media", "panel-open-session"] }).ask("config");
-  expect(withMedia).toMatchObject({ media: true, openSession: true });
+  const withMedia = studio({ features: ["panel-media", "panel-open-session"] });
+  Object.assign(withMedia.fake.api, { panelMedia: () => {} });
+  extension.activate(withMedia.fake.api);
+  expect(await withMedia.ask("config")).toMatchObject({ media: true, openSession: true });
 });
 
 test("create, list, read and save a brief through the panel routes", async () => {
@@ -103,11 +105,9 @@ test("a scene file edited by hand opens: the bad scene is reported, not a crash"
   expect(read.problems).toHaveLength(1);
 });
 
-test("render and export say they are not available yet", async () => {
+test("export says it is not available yet", async () => {
   const s = studio();
-  for (const path of ["render", "export"]) {
-    expect(await s.ask(path, {})).toMatchObject({ available: false });
-  }
+  expect(await s.ask("export", {})).toMatchObject({ available: false });
 });
 
 test("the panel's buttons launch a session carrying the brief and the video id", async () => {
