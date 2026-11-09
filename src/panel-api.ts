@@ -6,7 +6,8 @@
 
 import type { PanelRequest, SettingValues } from "@prifly/extension-api";
 import type { DryRunService } from "./dry-run-service";
-import { PRODUCTS, REVIEW_STATUSES, type ReviewStatus } from "./scenes";
+import type { RenderRequest, RenderService } from "./render-service";
+import { LANGUAGES, PRODUCTS, REVIEW_STATUSES, type ReviewStatus } from "./scenes";
 import { reportOn, saveScript } from "./script";
 import type { Store } from "./store";
 import { MAX_NARRATION_SHARE, MAX_ON_SCREEN_WORDS, WORDS_PER_SECOND } from "./timing";
@@ -16,12 +17,21 @@ export type PanelContext = {
   settings: () => SettingValues | undefined;
   features: () => readonly string[];
   dryRun: () => DryRunService;
+  render: () => RenderService;
+  /** Whether the panel's media folder is served (feature "panel-media", and `api.panelMedia` took it). */
+  media: () => boolean;
 };
 
 export const NOT_YET = {
   available: false,
-  message: "Not available yet: the renderer comes in a later version of Demo studio.",
+  message: "Not available yet: export comes in a later version of Demo studio.",
 };
+
+function renderRequest(body: unknown): RenderRequest {
+  const redo = field(body, "redo") ?? "all";
+  if (redo !== "all" && redo !== "noted") throw new Error("redo must be all or noted");
+  return { redo, final: field(body, "final") === true };
+}
 
 function field(body: unknown, key: string): unknown {
   return typeof body === "object" && body !== null
@@ -43,7 +53,10 @@ async function video(context: PanelContext, id: string) {
     store.readScenes(id),
     store.sessionOf(id),
   ]);
-  const dryRun = await context.dryRun().view(id);
+  const [dryRun, render] = await Promise.all([
+    context.dryRun().view(id),
+    context.render().view(id),
+  ]);
   return {
     entry,
     brief,
@@ -51,6 +64,7 @@ async function video(context: PanelContext, id: string) {
     problems: read.problems,
     session,
     dryRun,
+    render,
   };
 }
 
@@ -58,12 +72,14 @@ function config(context: PanelContext) {
   const settings = context.settings() ?? {};
   const features = context.features();
   return {
-    media: features.includes("panel-media"),
+    media: features.includes("panel-media") && context.media(),
     openSession: features.includes("panel-open-session"),
     wordsPerSecond: WORDS_PER_SECOND,
     maxNarrationShare: MAX_NARRATION_SHARE,
     maxOnScreenWords: MAX_ON_SCREEN_WORDS,
     elevenLabsKey: settings["elevenLabsKey"] === true,
+    elevenLabsVoice:
+      typeof settings["elevenLabsVoiceId"] === "string" && settings["elevenLabsVoiceId"] !== "",
     voices: { sv: settings["voiceSv"] ?? null, en: settings["voiceEn"] ?? null },
   };
 }
@@ -116,15 +132,32 @@ export async function answerPanel(context: PanelContext, request: PanelRequest):
       );
       return await video(context, id);
     }
-    case "dry-run": {
-      // POST starts one (unless one runs); GET reads how it goes. Either answers at once.
-      if (body === null || body === undefined)
-        return await context.dryRun().view(query["id"] ?? "");
-      return await context.dryRun().start(text(body, "id"));
-    }
+    default:
+      return await answerRuns(context, request);
+  }
+}
+
+/** The routes of the background jobs: POST starts one (unless one runs), GET reads how it goes. */
+async function answerRuns(context: PanelContext, request: PanelRequest): Promise<unknown> {
+  const { path, query, body } = request;
+  const reading = body === null || body === undefined;
+  const id = query["id"] ?? "";
+  switch (path) {
+    case "dry-run":
+      return reading
+        ? await context.dryRun().view(id)
+        : await context.dryRun().start(text(body, "id"));
     case "still":
-      return await context.dryRun().still(query["id"] ?? "", query["scene"] ?? "");
+      return await context.dryRun().still(id, query["scene"] ?? "");
     case "render":
+      return reading
+        ? await context.render().view(id)
+        : await context.render().start(text(body, "id"), renderRequest(body));
+    case "voice-sample": {
+      const language = LANGUAGES.find((each) => each === query["lang"]);
+      if (language === undefined) throw new Error("lang must be sv or en");
+      return await context.render().voiceSamples(id, language, query["final"] === "true");
+    }
     case "export":
       return NOT_YET;
     default:

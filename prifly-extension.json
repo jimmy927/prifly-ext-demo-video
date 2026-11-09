@@ -20,7 +20,8 @@
       "icon": "file-text",
       "description": "Brief, script, storyboard and video for product demos",
       "folder": "panel",
-      "page": "index.html"
+      "page": "index.html",
+      "media": true
     }
   ],
   "settings": [
@@ -37,7 +38,7 @@
       "description": "The draft voice for Swedish narration.",
       "type": "select",
       "default": "sv-SE-SofieNeural",
-      "options": ["sv-SE-SofieNeural", "sv-SE-MattiasNeural"]
+      "options": ["sv-SE-SofieNeural", "sv-SE-MattiasNeural", "sv-SE-HilleviNeural"]
     },
     {
       "id": "voiceEn",
@@ -53,6 +54,27 @@
         "en-US-GuyNeural",
         "en-US-JennyNeural"
       ]
+    },
+    {
+      "id": "elevenLabsVoiceId",
+      "label": "ElevenLabs voice id",
+      "description": "The voice of the Final voice render. Pick one by ear with Voice samples on the Video tab.",
+      "type": "string",
+      "default": ""
+    },
+    {
+      "id": "elevenLabsModel",
+      "label": "ElevenLabs model",
+      "description": "The model of the Final voice render.",
+      "type": "string",
+      "default": "eleven_multilingual_v2"
+    },
+    {
+      "id": "ffmpegPath",
+      "label": "ffmpeg path",
+      "description": "Full path to ffmpeg on the machine prifly runs on, with ffprobe beside it. Empty: found on PATH, or where winget installs it on Windows.",
+      "type": "string",
+      "default": ""
     },
     {
       "id": "odiCheckout",

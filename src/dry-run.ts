@@ -13,16 +13,17 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { type LaunchBrowser, type Page, withBrowser } from "./browser";
+import { BackgroundRuns, type Progress, type RunStatus } from "./runs";
 import type { Product, Scene, Step } from "./scenes";
 import { type HarnessPage, sceneUrl } from "./sources/harness";
 import { PROJECTS } from "./sources/projects";
 
 /** How long a step waits for its target to show before it fails. */
 export const APPEAR_MS = 3000;
-const WAIT_FOR_MS = 5000;
+export const WAIT_FOR_MS = 5000;
 const POLL_MS = 100;
 /** After a click or a hover, for the page to answer it. */
-const AFTER_ACTION_MS = 350;
+export const AFTER_ACTION_MS = 350;
 
 export type StepFailure = {
   /** 1-based, as the reader counts. */
@@ -65,7 +66,7 @@ export type DryRunResult = {
  * Waits up to `within` for the target to show, scrolling it into view when
  * it is there but off screen; where it is, or why it cannot be used.
  */
-async function target(page: Page, selector: string, within: number) {
+export async function target(page: Page, selector: string, within: number) {
   // Timed by the waits themselves (a probe takes a few ms), so a fake page's tests take none.
   for (let waited = 0; ; waited += POLL_MS) {
     let probe = await page.probe(selector);
@@ -125,6 +126,21 @@ export type SceneRunDeps = {
   saveStill: (sceneId: string, png: Uint8Array) => Promise<number>;
 };
 
+/** Opens a harness scene's page and waits until it has drawn, the harness's own controls hidden. */
+export async function openScene(
+  page: Page,
+  built: HarnessPage,
+  source: Extract<Scene["source"], { kind: "harness" }>,
+): Promise<void> {
+  const spec = PROJECTS[source.project];
+  await page.open(sceneUrl(built.file, source.target, source.state), {
+    ...spec.ready,
+    ...(spec.hide.length === 0
+      ? {}
+      : { css: `${spec.hide.join(", ")} { display: none !important; }` }),
+  });
+}
+
 /** One scene: opened, its steps performed in order until one fails, its still taken. */
 export async function runScene(deps: SceneRunDeps, scene: Scene): Promise<SceneResult> {
   const result: SceneResult = {
@@ -142,15 +158,8 @@ export async function runScene(deps: SceneRunDeps, scene: Scene): Promise<SceneR
     result.error = "live sources come in a later version of Demo studio";
     return result;
   }
-  const spec = PROJECTS[source.project];
   try {
-    const built = await deps.pageOf(source.project);
-    await deps.page.open(sceneUrl(built.file, source.target, source.state), {
-      ...spec.ready,
-      ...(spec.hide.length === 0
-        ? {}
-        : { css: `${spec.hide.join(", ")} { display: none !important; }` }),
-    });
+    await openScene(deps.page, await deps.pageOf(source.project), source);
   } catch (caught) {
     result.error = caught instanceof Error ? caught.message : String(caught);
     return result;
@@ -191,7 +200,7 @@ export function summarize(results: readonly SceneResult[]): string {
   return `${passed} of ${total} scenes passed; ${where} ${why}${more}`;
 }
 
-export type Progress = { done: number; total: number; line: string };
+export type { Progress };
 
 export type DryRunDeps = {
   launch: LaunchBrowser;
@@ -264,63 +273,10 @@ export async function lastDryRun(stillsDir: string): Promise<DryRunResult | null
   }
 }
 
-export type DryRunStatus =
-  | { state: "idle"; video: string | null }
-  | { state: "running"; video: string; progress: Progress; startedAt: number };
+export type DryRunStatus = RunStatus;
 
 /**
  * One dry run at a time, in the background. `start` answers at once: the run
  * started, or which video's run is already going. The panel polls `status`.
  */
-export class DryRuns {
-  private current: {
-    video: string;
-    progress: Progress;
-    startedAt: number;
-    done: Promise<DryRunResult | null>;
-  } | null = null;
-  private lastError = new Map<string, string>();
-
-  status(): DryRunStatus {
-    const current = this.current;
-    if (current === null) return { state: "idle", video: null };
-    return {
-      state: "running",
-      video: current.video,
-      progress: current.progress,
-      startedAt: current.startedAt,
-    };
-  }
-
-  /** Why the last run of `video` failed outright (not a scene failing: the run itself); null when it did not. */
-  errorOf(video: string): string | null {
-    return this.lastError.get(video) ?? null;
-  }
-
-  start(
-    video: string,
-    run: (onProgress: (progress: Progress) => void) => Promise<DryRunResult>,
-  ): { started: true; done: Promise<DryRunResult | null> } | { started: false; running: string } {
-    if (this.current !== null) return { started: false, running: this.current.video };
-    this.lastError.delete(video);
-    const progress: Progress = { done: 0, total: 0, line: "Starting…" };
-    const entry = {
-      video,
-      progress,
-      startedAt: Date.now(),
-      done: Promise.resolve<DryRunResult | null>(null),
-    };
-    this.current = entry;
-    entry.done = run((next) => {
-      entry.progress = next;
-    })
-      .catch((caught: unknown) => {
-        this.lastError.set(video, caught instanceof Error ? caught.message : String(caught));
-        return null;
-      })
-      .finally(() => {
-        if (this.current === entry) this.current = null;
-      });
-    return { started: true, done: entry.done };
-  }
-}
+export class DryRuns extends BackgroundRuns<DryRunResult> {}

@@ -2,11 +2,13 @@
  * The MCP tools every session sees as `mcp__prifly__demo_*`. Reads run at
  * once. The two writes (`demo_brief_set`, `demo_script_set`) change only this
  * extension's own files in the video's folder, so they show no confirm card;
- * `demo_dry_run` writes only the video's stills.
+ * `demo_dry_run` writes only the video's stills, `demo_render` only its
+ * audio, takes and out folders.
  */
 
 import type { ExtensionTool } from "@prifly/extension-api";
 import { type DryRunService, dryRunText } from "./dry-run-service";
+import { type RenderService, renderText } from "./render-service";
 import { type Brief, PRODUCTS } from "./scenes";
 import { reportText, saveScript } from "./script";
 import type { Store } from "./store";
@@ -35,7 +37,11 @@ function briefLines(brief: Brief): string {
   return json(brief);
 }
 
-export function demoTools(store: () => Store, dryRun: () => DryRunService): ExtensionTool[] {
+export function demoTools(
+  store: () => Store,
+  dryRun: () => DryRunService,
+  render: () => RenderService,
+): ExtensionTool[] {
   return [
     {
       name: "demo_list",
@@ -119,6 +125,26 @@ export function demoTools(store: () => Store, dryRun: () => DryRunService): Exte
           lines.push(`Unreadable scene ${each.index + 1}: ${each.message}`);
         return lines.length === 0 ? "No scenes yet." : lines.join("\n");
       },
+    },
+    {
+      name: "demo_render",
+      description:
+        "Renders a video to <video>/out/<lang>.mp4 at 1920x1080 for each language in its brief: voices every scene (cached by text and voice), records each scene in Demo studio's own headless browser, zooms toward each click, burns in subtitles, joins the scenes and mixes in the narration. redo 'all' (default) records every scene again; redo 'noted' records only the scenes the reader left notes on. final true uses ElevenLabs (it costs characters on the reader's plan) instead of the Edge draft voices. Waits until it ends; only one render runs at a time. Changes only the video's own audio, takes and out folders.",
+      inputSchema: objectSchema(
+        {
+          video: VIDEO,
+          redo: { type: "string", enum: ["all", "noted"] },
+          final: { type: "boolean" },
+        },
+        ["video"],
+      ),
+      call: async (args) =>
+        renderText(
+          await render().runAndWait(videoArg(args), {
+            redo: args["redo"] === "noted" ? "noted" : "all",
+            final: args["final"] === true,
+          }),
+        ),
     },
     {
       name: "demo_dry_run",

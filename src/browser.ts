@@ -125,6 +125,19 @@ export type Page = {
   screenshot(): Promise<Uint8Array>;
   /** Uncaught errors the page threw since it was opened. */
   errors(): string[];
+  /**
+   * Starts recording the screen (`Page.startScreencast`): each painted frame
+   * comes to `onFrame` as a JPEG with its time (ms, the browser's clock).
+   * `stop` ends it.
+   */
+  screencast(onFrame: (jpeg: Uint8Array, atMs: number) => void): Promise<{ stop(): Promise<void> }>;
+  /**
+   * Moves the drawn cursor (an element added to the page, which no click can
+   * hit) smoothly from where it is to (x, y), over `ms`; resolves when it is there.
+   */
+  cursorTo(x: number, y: number, ms: number): Promise<void>;
+  /** A ring under the cursor at (x, y), as a click shows in the frames. */
+  pulse(x: number, y: number): Promise<void>;
 };
 
 export type Browser = { page: Page; close(): Promise<void> };
@@ -175,6 +188,47 @@ function probeScript(selector: string): string {
     const inView = r.bottom > 0 && r.right > 0 && r.top < innerHeight && r.left < innerWidth;
     const visible = r.width > 0 && r.height > 0 && s.visibility !== "hidden" && s.display !== "none" && Number(s.opacity) > 0 && inView;
     return { found: true, visible, x: r.left + r.width / 2, y: r.top + r.height / 2, width: r.width, height: r.height };
+  })()`;
+}
+
+/**
+ * The page side of `cursorTo`: a cursor drawn as an arrow, made once, moved
+ * by a timer (not `requestAnimationFrame`, which a headless page may hold
+ * back) with an ease-in-out, from where it was to (x, y).
+ */
+function cursorScript(x: number, y: number, ms: number): string {
+  return `new Promise((done) => {
+    let c = document.getElementById("__demo-cursor");
+    if (c === null) {
+      c = document.createElement("div");
+      c.id = "__demo-cursor";
+      c.style.cssText = "position:fixed;left:0;top:0;width:28px;height:28px;z-index:2147483647;pointer-events:none;will-change:transform;filter:drop-shadow(0 2px 3px rgba(0,0,0,.35))";
+      c.innerHTML = '<svg width="28" height="28" viewBox="0 0 28 28"><path d="M3 2 L3 22 L8.5 17 L12.5 26 L16 24.5 L12 15.8 L19.5 15.5 Z" fill="#111" stroke="#fff" stroke-width="1.6" stroke-linejoin="round"/></svg>';
+      document.documentElement.append(c);
+      c.dataset.x = String(innerWidth / 2);
+      c.dataset.y = String(innerHeight * 0.62);
+    }
+    const x0 = Number(c.dataset.x), y0 = Number(c.dataset.y);
+    const put = (x, y) => { c.style.transform = "translate(" + (x - 3) + "px," + (y - 2) + "px)"; c.dataset.x = String(x); c.dataset.y = String(y); };
+    const start = performance.now();
+    const ease = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
+    const step = () => {
+      const t = Math.min(1, (performance.now() - start) / ${Math.max(1, ms)});
+      const k = ease(t);
+      put(x0 + (${x} - x0) * k, y0 + (${y} - y0) * k);
+      if (t < 1) setTimeout(step, 16); else done(true);
+    };
+    step();
+  })`;
+}
+
+function pulseScript(x: number, y: number): string {
+  return `void (() => {
+    const r = document.createElement("div");
+    r.style.cssText = "position:fixed;left:${x - 22}px;top:${y - 22}px;width:44px;height:44px;border-radius:50%;border:3px solid rgba(37,99,235,.9);background:rgba(37,99,235,.18);z-index:2147483646;pointer-events:none;transform:scale(.4);opacity:1;transition:transform 450ms ease-out,opacity 450ms ease-out";
+    document.documentElement.append(r);
+    requestAnimationFrame(() => { r.style.transform = "scale(1.25)"; r.style.opacity = "0"; });
+    setTimeout(() => r.remove(), 700);
   })()`;
 }
 
@@ -295,6 +349,43 @@ export function cdpPage(session: CdpSession): Page {
       return Uint8Array.from(Buffer.from(shot.data, "base64"));
     },
     errors: () => [...errors],
+    async screencast(onFrame) {
+      const off = session.on("Page.screencastFrame", (params) => {
+        const frame = params as {
+          data: string;
+          sessionId: number;
+          metadata: { timestamp?: number };
+        };
+        // Acked first: the browser sends the next frame only after the ack.
+        void session
+          .send("Page.screencastFrameAck", { sessionId: frame.sessionId })
+          .catch(() => {});
+        const at = (frame.metadata.timestamp ?? Date.now() / 1000) * 1000;
+        onFrame(Uint8Array.from(Buffer.from(frame.data, "base64")), at);
+      });
+      await session.send("Page.startScreencast", {
+        format: "jpeg",
+        quality: 88,
+        maxWidth: VIEWPORT.width,
+        maxHeight: VIEWPORT.height,
+        everyNthFrame: 1,
+      });
+      return {
+        async stop() {
+          try {
+            await session.send("Page.stopScreencast");
+          } finally {
+            off();
+          }
+        },
+      };
+    },
+    async cursorTo(x, y, ms) {
+      await evaluate(cursorScript(x, y, ms));
+    },
+    async pulse(x, y) {
+      await evaluate(pulseScript(x, y));
+    },
   };
 }
 

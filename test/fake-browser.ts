@@ -27,11 +27,19 @@ export type FakePage = Page & {
 
 /** A tiny valid PNG's first bytes: enough for the tests to see a PNG was written. */
 export const PNG = Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+/** A JPEG's first bytes, for a recorded frame. */
+export const JPEG = Uint8Array.from([0xff, 0xd8, 0xff, 0xe0]);
+
+/** A fake clock: `wait` and the cursor's travel move it on; a recording paints a frame at each. */
+export type FakeClock = { t: number };
 
 export function fakePage(
   elements: Record<string, FakeElement>,
-  options: { failOpen?: string } = {},
+  options: { failOpen?: string; clock?: FakeClock } = {},
 ): FakePage {
+  const clock = options.clock ?? { t: 0 };
+  let painting: ((jpeg: Uint8Array, atMs: number) => void) | null = null;
+  const paint = () => painting?.(JPEG, clock.t);
   const calls: string[] = [];
   const opened: { url: string; options: OpenOptions }[] = [];
   const revealed = new Set<string>();
@@ -80,8 +88,10 @@ export function fakePage(
     async insertText(text) {
       calls.push(`text ${text}`);
     },
-    async wait() {
+    async wait(ms) {
       waits += 1;
+      clock.t += ms;
+      paint();
     },
     async screenshot() {
       page.shots += 1;
@@ -89,6 +99,26 @@ export function fakePage(
       return PNG;
     },
     errors: () => [],
+    async screencast(onFrame) {
+      calls.push("screencast start");
+      painting = onFrame;
+      // The browser sends the screen as it stands at once.
+      paint();
+      return {
+        async stop() {
+          calls.push("screencast stop");
+          painting = null;
+        },
+      };
+    },
+    async cursorTo(x, y, ms) {
+      calls.push(`cursor ${x},${y}`);
+      clock.t += ms;
+      paint();
+    },
+    async pulse(x, y) {
+      calls.push(`pulse ${x},${y}`);
+    },
   };
   return page;
 }
