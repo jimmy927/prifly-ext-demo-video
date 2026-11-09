@@ -101,7 +101,7 @@ test("a failing step comes back on the route and in the tool's answer", async ()
   const id = await videoWith(s, "V", [{ kind: "click", selector: "#missing" }]);
   const answer = await s.fake.callTool("demo_dry_run", { video: id });
   expect(answer).toContain(
-    '0 of 1 scenes passed; scene 1 (pain) step 1 click "#missing" is not on the page after 3 s',
+    "0 of 1 scenes passed; scene 1 (pain) step 1 click #missing is not on the page after 3 s",
   );
   expect(answer).toContain("- pain: FAILED");
   expect((await s.ask("dry-run", null, { id })).last.ok).toBe(false);

@@ -117,7 +117,7 @@ export function dryRunText(answer: Awaited<ReturnType<DryRunService["runAndWait"
   for (const scene of answer.result.scenes) {
     const mark = scene.ok ? "ok" : "FAILED";
     const why = scene.failure
-      ? ` step ${scene.failure.step} ${scene.failure.kind} ${JSON.stringify(scene.failure.selector)} ${scene.failure.reason}`
+      ? ` step ${scene.failure.step} ${scene.failure.kind} ${scene.failure.selector} ${scene.failure.reason}`
       : scene.error === null
         ? ""
         : ` ${scene.error}`;

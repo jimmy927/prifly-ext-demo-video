@@ -182,7 +182,7 @@ test("the summary says how many scenes passed, or the scene, step and selector t
   };
   const unopened: SceneResult = { ...ok("c", 0), ok: false, error: "no harness", still: null };
   expect(summarize([ok("a", 1), failed, ok("b", 0)])).toBe(
-    '2 of 3 scenes passed; scene 2 (pipeline) step 2 click "#go" is covered by another element',
+    "2 of 3 scenes passed; scene 2 (pipeline) step 2 click #go is covered by another element",
   );
   expect(summarize([unopened, failed])).toBe(
     "0 of 2 scenes passed; scene 1 (c) could not be opened: no harness (1 more scene failed too)",

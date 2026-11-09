@@ -182,7 +182,7 @@ export function summarize(results: readonly SceneResult[]): string {
   const where = `scene ${first + 1} (${bad.id})`;
   const why =
     bad.failure !== null
-      ? `step ${bad.failure.step} ${bad.failure.kind} ${JSON.stringify(bad.failure.selector)} ${bad.failure.reason}`
+      ? `step ${bad.failure.step} ${bad.failure.kind} ${bad.failure.selector} ${bad.failure.reason}`
       : `could not be opened: ${bad.error ?? "unknown"}`;
   const more =
     total - passed > 1
