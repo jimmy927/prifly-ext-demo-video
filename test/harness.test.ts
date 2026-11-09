@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync } from "node:fs";
 import { mkdir, readdir, readFile, rm, rmdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import type { Ran, RepoShell } from "../src/exec";
+import { type Exec, type Ran, type RepoShell, repoShell } from "../src/exec";
 import { composeSingleFile, escapeScript } from "../src/sources/compose";
 import { cacheName, harnessPage, sceneUrl } from "../src/sources/harness";
 import { targetsIn } from "../src/sources/projects";
@@ -33,7 +33,6 @@ function fakeShell(
   const files: string[] = [];
   const shell: RepoShell = {
     where: options.wsl === true ? "wsl" : "here",
-    toRepoPath: (path) => path,
     home: async () => options.home ?? "/home/reader",
     async readText(path) {
       files.push(`read ${path}`);
@@ -292,6 +291,60 @@ test("through WSL the worktree is on WSL's own disk, only the page comes back, a
   expect(commands.find((each) => each.argv[1] === "node_modules/vite/bin/vite.js")?.argv[0]).toBe(
     `${home}/.bun/bin/bun`,
   );
+});
+
+/**
+ * wsl.exe over the fake checkout's world: the command after `--` (in its
+ * `--cd` folder) is acted out by `fakeShell`, `cat` prints a file, `dd`
+ * writes its stdin, `printenv HOME` answers `home`. Every wsl.exe call kept.
+ */
+function fakeWslExe(home: string) {
+  const world = fakeShell({ home });
+  const calls: string[][] = [];
+  const exec: Exec = async (argv, options = {}) => {
+    calls.push([...argv]);
+    const at = argv.indexOf("--");
+    const cd = argv.indexOf("--cd");
+    const command = argv.slice(at + 1);
+    const cwd = cd === -1 ? undefined : argv[cd + 1];
+    const [program, ...args] = command;
+    if (program === "printenv") return ok(`${home}\n`);
+    if (program === "cat") return ok(await readFile(args.at(-1) ?? "", "utf8"));
+    if (program === "dd") {
+      await writeFile((args[0] ?? "").slice("of=".length), options.stdin ?? "");
+      return ok();
+    }
+    return await world.shell.run(command, cwd);
+  };
+  return { exec, calls };
+}
+
+test("a whole build on a Windows host hands WSL no /mnt/ path: the worktree and node_modules stay inside WSL", async () => {
+  const { video, cacheDir } = setup();
+  const home = mkdtempSync(join(tmpdir(), "wsl-home-"));
+  const { exec, calls } = fakeWslExe(home);
+  const shell = repoShell({
+    platform: "win32",
+    distro: "Ubuntu-20.04",
+    exec,
+    homeHere: "C:\\Users\\j",
+  });
+  const page = await harnessPage({ shell, checkouts: CHECKOUTS, cacheDir }, "odi", [], video);
+  expect(await readFile(page.file, "utf8")).toContain("<style>body{margin:0}</style>");
+  expect(calls.length).toBeGreaterThan(8);
+  expect(calls.every((argv) => argv[0] === "wsl.exe")).toBe(true);
+  // The rule: nothing in WSL reads /mnt/c. No argument of any WSL command names a drive mount.
+  expect(calls.filter((argv) => argv.some((arg) => arg.includes("/mnt/")))).toEqual([]);
+  const tree = calls.find((argv) => argv.includes("add"))?.at(-2) ?? "";
+  expect(tree.startsWith(`${home}/.cache/prifly-demo-video/build/odi-`)).toBe(true);
+  const link = calls.find((argv) => argv.includes("ln"));
+  expect(link?.slice(-2)).toEqual([`${home}/src/odi/node_modules`, `${tree}/node_modules`]);
+  // The entry was streamed in through dd, and the worktree is gone again.
+  expect(calls.some((argv) => argv.includes(`of=${tree}/frontend/mockup/mockup-main.tsx`))).toBe(
+    true,
+  );
+  expect(existsSync(`${home}/.cache/prifly-demo-video/build`)).toBe(false);
+  expect(existsSync(join(video, "build"))).toBe(false);
 });
 
 test("the prifly harness writes its own entry, config and page beside preview.html", async () => {

@@ -9,28 +9,34 @@
  * shell, as prifly-ext-token-stats runs its git. Elsewhere (Linux, a WSL
  * host, the tests) the command runs here as it is.
  *
- * A path is named in the checkout's world: `/home/...` inside WSL. Files
- * there are read with `cat` and written by staging them on the host and one
- * `cp` (`readText`, `writeText`), so nothing heavy crosses `/mnt/c`: a build
- * whose worktree sat on DrvFs took 385 s against 18 s inside WSL's own disk
- * (2026-11-09). A host path is handed to a command as `/mnt/c/Users/...`
- * (`toRepoPath`).
+ * A path is always named in the checkout's world (`/home/...` inside WSL),
+ * and no file is read across the two systems (prifly's CLAUDE.md, "No file
+ * reads across operating systems"): nothing in WSL is handed a `/mnt/c/...`
+ * path, and nothing here reads `\\wsl.localhost`. A file there is read by
+ * `cat` printing it to stdout and written by streaming it into `dd`'s stdin
+ * (`readText`, `writeText`). The worktree stays on WSL's own disk too: one
+ * on DrvFs built in 385 s against 44 s (2026-11-09).
  */
 
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { dirname, join, win32 } from "node:path";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { dirname, win32 } from "node:path";
 
 export type Ran = { code: number; out: string; err: string };
 
-/** Starts `argv[0]` with the rest as its arguments, in `cwd` when given; what it printed and its exit code. */
-export type Exec = (argv: readonly string[], options?: { cwd?: string }) => Promise<Ran>;
+export type ExecOptions = {
+  cwd?: string;
+  /** Text streamed into the program's stdin; closed at once when left out. */
+  stdin?: string;
+};
 
-/** The real one: Bun.spawn, its window hidden on Windows, stdin closed. */
+/** Starts `argv[0]` with the rest as its arguments; what it printed and its exit code. */
+export type Exec = (argv: readonly string[], options?: ExecOptions) => Promise<Ran>;
+
+/** The real one: Bun.spawn, its window hidden on Windows, stdin closed unless it is given. */
 export const spawnExec: Exec = async (argv, options = {}) => {
   const proc = Bun.spawn([...argv], {
     ...(options.cwd === undefined ? {} : { cwd: options.cwd }),
-    stdin: "ignore",
+    stdin: options.stdin === undefined ? "ignore" : new TextEncoder().encode(options.stdin),
     stdout: "pipe",
     stderr: "pipe",
     windowsHide: true,
@@ -49,27 +55,16 @@ export type RepoShell = {
   where: "here" | "wsl";
   /** Runs a command in the checkout's world; `cwd` is a path in that world. */
   run(argv: readonly string[], cwd?: string): Promise<Ran>;
-  /** A host path as a command there names it. */
-  toRepoPath(hostPath: string): string;
   /** `$HOME` there, asked once. */
   home(): Promise<string>;
-  /** A text file there, by its path there (inside WSL: through `cat`, never over `\\wsl.localhost`). */
+  /** A text file there, by its path there (inside WSL: `cat` to stdout, never over `\\wsl.localhost`). */
   readText(path: string): Promise<string>;
-  /** Writes a text file there, its folder made first (inside WSL: staged on the host, then one `cp`). */
+  /** Writes a text file there, its folder made first (inside WSL: streamed into `dd`'s stdin). */
   writeText(path: string, text: string): Promise<void>;
 };
 
 /** The folder of a POSIX path. */
 const posixDir = (path: string) => path.replace(/\/[^/]*$/, "") || "/";
-
-/** `C:\Users\x` as WSL mounts it, `/mnt/c/Users/x`; a path that is no drive path is left as it is. */
-export function toWslPath(hostPath: string): string {
-  const match = /^([A-Za-z]):[\\/]?(.*)$/.exec(hostPath);
-  if (match === null) return hostPath.replaceAll("\\", "/");
-  const [, drive = "", rest = ""] = match;
-  const tail = rest.replaceAll("\\", "/").replace(/\/+$/, "");
-  return `/mnt/${drive.toLowerCase()}${tail === "" ? "" : `/${tail}`}`;
-}
 
 /** The command line `wsl.exe` is given for one command. */
 export function wslArgv(
@@ -102,15 +97,12 @@ export function repoShell(options: {
   exec: Exec;
   /** `$HOME` here, for a shell that runs here. */
   homeHere: string;
-  /** A host folder files bound for WSL are staged in; the system's temp folder by default. */
-  stageDir?: string;
 }): RepoShell {
   const { platform, distro, exec, homeHere } = options;
   if (platform !== "win32") {
     return {
       where: "here",
       run: (argv, cwd) => exec(argv, cwd === undefined ? {} : { cwd }),
-      toRepoPath: (path) => path,
       home: async () => homeHere,
       readText: (path) => readFile(path, "utf8"),
       async writeText(path, text) {
@@ -120,28 +112,25 @@ export function repoShell(options: {
     };
   }
   let home: Promise<string> | null = null;
+  // wsl.exe itself starts in the host's home; every folder a command works in is `--cd`, a WSL path.
+  const host = { cwd: win32.join(homeHere) };
   const run = async (argv: readonly string[], cwd?: string) =>
-    clean(await exec(wslArgv(distro, argv, cwd), { cwd: win32.join(homeHere) }));
-  const must = async (what: string, argv: readonly string[]) => {
-    const ran = await run(argv);
+    clean(await exec(wslArgv(distro, argv, cwd), host));
+  const must = async (what: string, argv: readonly string[], stdin?: string) => {
+    const ran = clean(
+      await exec(wslArgv(distro, argv, undefined), stdin === undefined ? host : { ...host, stdin }),
+    );
     if (ran.code !== 0) throw failure(what, ran);
     return ran;
   };
   return {
     where: "wsl",
     run,
-    toRepoPath: toWslPath,
     readText: async (path) => (await must(`Reading ${path} in WSL`, ["cat", "--", path])).out,
     async writeText(path, text) {
-      const staged = await mkdtemp(join(options.stageDir ?? tmpdir(), "demo-studio-stage-"));
-      try {
-        const file = join(staged, "file");
-        await writeFile(file, text, "utf8");
-        await must(`Making ${posixDir(path)} in WSL`, ["mkdir", "-p", "--", posixDir(path)]);
-        await must(`Writing ${path} in WSL`, ["cp", "--", toWslPath(file), path]);
-      } finally {
-        await rm(staged, { recursive: true, force: true });
-      }
+      await must(`Making ${posixDir(path)} in WSL`, ["mkdir", "-p", "--", posixDir(path)]);
+      // `dd` writes its stdin to the file (truncating it) and prints nothing.
+      await must(`Writing ${path} in WSL`, ["dd", `of=${path}`, "status=none"], text);
     },
     home() {
       home ??= run(["printenv", "HOME"]).then((ran) => {
