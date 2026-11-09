@@ -125,7 +125,8 @@ test("ElevenLabs is asked with the key, model and voice, and its refusal is repo
   expect(seen[0]?.url).toBe(
     "https://api.elevenlabs.io/v1/text-to-speech/v%201?output_format=mp3_44100_128",
   );
-  expect((seen[0]?.init.headers as Record<string, string>)["xi-api-key"]).toBe("secret-key");
+  const headers = (seen[0]?.init.headers ?? {}) as Record<string, string>;
+  expect(headers["xi-api-key"]).toBe("secret-key");
   expect(JSON.parse(String(seen[0]?.init.body))).toEqual({ text: "Hello", model_id: "model-x" });
   await expect(
     elevenSynth(async () => new Response("quota", { status: 401 }), "k", "t", "v", "m"),

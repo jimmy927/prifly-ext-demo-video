@@ -363,3 +363,12 @@ button.primary {
 .samples audio {
   height: 32px;
 }
+/* Always this tall, so the note row below never moves when a render arrives. */
+#timeline {
+  min-height: 76px;
+  margin: 6px 0 10px;
+}
+#player-note {
+  min-height: 1.45em;
+  margin: 2px 0;
+}

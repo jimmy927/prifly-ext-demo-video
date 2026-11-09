@@ -225,7 +225,7 @@ export function sceneSrt(
 
 /** How the subtitles look: white on a dark box, near the bottom (libass sizes are of a 288-line frame). */
 export const SUBTITLE_STYLE =
-  "FontName=Arial,FontSize=15,PrimaryColour=&H00FFFFFF,BackColour=&H99000000,BorderStyle=4,Outline=0,Shadow=0,MarginV=22";
+  "FontName=Arial,FontSize=11,PrimaryColour=&H00FFFFFF,BackColour=&H30000000,BorderStyle=4,Outline=0,Shadow=0,MarginV=22";
 
 export function encoderArgs(encoder: Encoder): string[] {
   const common = ["-pix_fmt", "yuv420p", "-g", String(FPS * 2)];

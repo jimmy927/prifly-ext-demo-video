@@ -104,7 +104,6 @@ test("the eased expression follows the keys, by output frame", () => {
   ];
   const expr = easedExpr(keys, (key) => key.z);
   const on30 = (on: number) =>
-    // biome-ignore lint/security/noGlobalEval: the expression is ffmpeg's arithmetic, built here
     new Function("on", "lt", "if_", "clip", `return ${expr.replaceAll("if(", "if_(")};`)(
       on,
       (a: number, b: number) => a < b,
