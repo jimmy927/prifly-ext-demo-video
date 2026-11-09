@@ -10,6 +10,7 @@
     "check": "biome check ."
   },
   "dependencies": {
+    "@jimmy927/devwire": "github:jimmy927/devwire#v0.1.0",
     "zod": "^3.24.1"
   },
   "devDependencies": {

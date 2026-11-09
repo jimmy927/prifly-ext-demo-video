@@ -5,6 +5,7 @@
     "": {
       "name": "prifly-ext-demo-video",
       "dependencies": {
+        "@jimmy927/devwire": "github:jimmy927/devwire#v0.1.0",
         "zod": "^3.24.1",
       },
       "devDependencies": {
@@ -37,6 +38,8 @@
     "@biomejs/cli-win32-arm64": ["@biomejs/cli-win32-arm64@2.6.6", "", { "os": "win32", "cpu": "arm64" }, "sha512-DjVXwQAQeHrO1JEZAEus54k40Tnh4glyU3VFLcDBKwoz0xnxCEnqw6TCMXoujcQMQynWd3AY8bLrbR1o0XNqow=="],
 
     "@biomejs/cli-win32-x64": ["@biomejs/cli-win32-x64@2.6.6", "", { "os": "win32", "cpu": "x64" }, "sha512-B7KMG26A4I9lAuxwBGMmiVcjMGAeJRoz+pzFt9brRvOAsIrgOu8ptJld5rUWui6tM1uiJwxeJhhDPuAiZtxXdw=="],
+
+    "@jimmy927/devwire": ["@jimmy927/devwire@github:jimmy927/devwire#5806426", {}, "jimmy927-devwire-5806426", "sha512-wDB3XBKpyPDwX97iC+XcheYWneSTKf2KmtNkWoLtltIzse3yJ+Q1c9BQ4eDGvz4BUwuWCe/VOZXS4mAsNn8f8Q=="],
 
     "@prifly/extension-api": ["@prifly/extension-api@git+ssh://git@github.com/jimmy927/prifly-extension-api.git#40313cc35a7a9bf3300ee7e22ae38881e581fcfb", {}, "40313cc35a7a9bf3300ee7e22ae38881e581fcfb"],
 
