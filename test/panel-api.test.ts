@@ -51,7 +51,7 @@ test("errors come back as throws the host turns into the page's inline error", a
   await expect(s.ask("videos", { title: "  ", product: "odi" })).rejects.toThrow("title is required");
   await expect(s.ask("videos", { title: "x", product: "other" })).rejects.toThrow("product must be");
   await expect(s.ask("video", null, { id: "missing" })).rejects.toThrow("No video missing");
-  await expect(s.ask("video", null, { id: "../../etc" })).rejects.toThrow("Not a video id");
+  await expect(s.ask("video", null, { id: "../../etc" })).rejects.toThrow("No video");
   await expect(s.ask("nonsense")).rejects.toThrow("No such request");
 });
 

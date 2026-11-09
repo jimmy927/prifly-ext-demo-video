@@ -95,7 +95,7 @@ test("demo_script_set reports house-rule violations but still saves", async () =
   const id = await newVideo(s);
   const answer = await s.fake.callTool("demo_script_set", {
     video: id,
-    scenes: [{ ...SCENE, onScreen: `Open ODI ${words(15)}` }],
+    scenes: [{ ...SCENE, onScreen: `Open ODI ${words(14)}` }],
   });
   expect(answer).toContain("pain: 16 words on screen; at most 15");
   expect(answer).toContain('says "ODI"');

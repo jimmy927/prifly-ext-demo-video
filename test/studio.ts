@@ -17,7 +17,7 @@ export function studio(options: { features?: string[]; noState?: boolean } = {})
   if (options.noState === true) Object.assign(fake.api, { state: undefined });
   extension.activate(fake.api);
   // biome-ignore lint/suspicious/noExplicitAny: tests read loose JSON
-  type Json = Record<string, any>;
+  type Json = any;
   const ask = (path: string, body: unknown = null, query: Record<string, string> = {}) => {
     const request: PanelRequest = { path, query, body };
     return extension.panel("studio", request) as Promise<Json>;
