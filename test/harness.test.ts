@@ -1,8 +1,8 @@
 import { expect, test } from "bun:test";
 import { existsSync, mkdtempSync } from "node:fs";
-import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rm, rmdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import type { Ran, RepoShell } from "../src/exec";
 import { composeSingleFile, escapeScript } from "../src/sources/compose";
 import { cacheName, harnessPage, sceneUrl } from "../src/sources/harness";
@@ -20,40 +20,85 @@ const LISTING = [
 const ok = (out = ""): Ran => ({ code: 0, out, err: "" });
 
 /**
- * A checkout's world over the test's temp folders: git and the build are
- * acted out on the disk (the worktree made and removed, the build's page
- * written), every command recorded. `toRepoPath` maps a host path the way
- * WSL's `/mnt/c` would when `wsl` is set.
+ * A checkout's world over the test's temp folders: git, the build and the
+ * file commands are acted out on the disk (the worktree made and removed,
+ * the build's page written), every command and every file read or written
+ * through the shell recorded. With `wsl`, the shell says it runs inside WSL
+ * and its home is `home` (a temp folder standing in for WSL's own disk).
  */
-function fakeShell(options: { wsl?: boolean; buildFails?: boolean; noModules?: boolean } = {}) {
+function fakeShell(
+  options: { wsl?: boolean; home?: string; buildFails?: boolean; noModules?: boolean } = {},
+) {
   const commands: { argv: string[]; cwd?: string }[] = [];
-  const prefix = options.wsl === true ? "/mnt/host" : "";
-  const host = (path: string) =>
-    prefix !== "" && path.startsWith(prefix) ? path.slice(prefix.length) : path;
+  const files: string[] = [];
   const shell: RepoShell = {
     where: options.wsl === true ? "wsl" : "here",
-    toRepoPath: (path) => `${prefix}${path}`,
-    home: async () => "/home/reader",
+    toRepoPath: (path) => path,
+    home: async () => options.home ?? "/home/reader",
+    async readText(path) {
+      files.push(`read ${path}`);
+      return await readFile(path, "utf8");
+    },
+    async writeText(path, text) {
+      files.push(`write ${path}`);
+      await mkdir(dirname(path), { recursive: true });
+      await writeFile(path, text, "utf8");
+    },
     async run(argv, cwd) {
       commands.push(cwd === undefined ? { argv: [...argv] } : { argv: [...argv], cwd });
       const [program, ...args] = argv;
-      if (program === "git") return await fakeGit(args, host);
-      if (program === "test") return { code: options.noModules === true ? 1 : 0, out: "", err: "" };
-      if (program === "ln" || program === "rm") return ok();
-      if (options.buildFails === true)
-        return { code: 1, out: "", err: "error: Could not resolve ./targets/x" };
-      return await fakeBuild(join(host(cwd ?? ""), "dist-mockup"));
+      if (program === "git") return await fakeGit(args);
+      const file = await fakeFileCommand(program ?? "", args, options.noModules === true);
+      if (file !== null) return file;
+      return options.buildFails === true
+        ? { code: 1, out: "", err: "error: Could not resolve ./targets/x" }
+        : await fakeBuild(join(cwd ?? "", "dist-mockup"));
     },
   };
-  return { shell, commands };
+  return { shell, commands, files };
+}
+
+/**
+ * `test`, `mkdir`, `rm`, `rmdir` and `ln` acted out on the disk; null for any
+ * other program. `test -d` and `-x` answer whether the checkout has its
+ * node_modules (and bun), `test -e` looks.
+ */
+async function fakeFileCommand(
+  program: string,
+  args: readonly string[],
+  noModules: boolean,
+): Promise<Ran | null> {
+  const path = args.at(-1) ?? "";
+  const answer = (done: boolean): Ran => ({ code: done ? 0 : 1, out: "", err: done ? "" : "no" });
+  switch (program) {
+    case "test":
+      return answer(args[0] === "-e" ? existsSync(path) : !noModules);
+    case "mkdir":
+      await mkdir(path, { recursive: true });
+      return ok();
+    case "rm":
+      if (args[0] === "-rf") await rm(path, { recursive: true, force: true });
+      return ok();
+    case "rmdir":
+      return answer(
+        await rmdir(path).then(
+          () => true,
+          () => false,
+        ),
+      );
+    case "ln":
+      return ok();
+    default:
+      return null;
+  }
 }
 
 /** `git -C <repo> <sub> …`: the worktree made and removed on disk, the rest answered. */
-async function fakeGit(args: readonly string[], host: (path: string) => string): Promise<Ran> {
+async function fakeGit(args: readonly string[]): Promise<Ran> {
   const sub = args[2];
   if (sub === "rev-parse") return ok(`${SHA}\n`);
   if (sub === "ls-tree") return ok(`${LISTING}\n`);
-  const tree = host(args[5] ?? "");
+  const tree = args[5] ?? "";
   if (sub === "worktree" && args[3] === "add") {
     await mkdir(join(tree, "frontend", "mockup"), { recursive: true });
     await writeFile(join(tree, ".git"), "gitdir: x\n");
@@ -87,7 +132,7 @@ const CHECKOUTS = { odi: "~/src/odi", prifly: "~/src/prifly" } as const;
 
 test("the ODI page is built in a throwaway worktree in the video's folder, with node_modules linked", async () => {
   const { video, cacheDir } = setup();
-  const { shell, commands } = fakeShell();
+  const { shell, commands, files } = fakeShell();
   const page = await harnessPage(
     { shell, checkouts: CHECKOUTS, cacheDir, runtime: "/usr/bin/bun" },
     "odi",
@@ -103,14 +148,25 @@ test("the ODI page is built in a throwaway worktree in the video's folder, with 
   expect(argv).toEqual([
     "git -C /home/reader/src/odi rev-parse HEAD",
     `git -C /home/reader/src/odi ls-tree --name-only ${SHA} frontend/mockup/targets/`,
+    `mkdir -p -- ${join(video, "build")}`,
     `git -C /home/reader/src/odi worktree add --detach ${tree} ${SHA}`,
     "test -d /home/reader/src/odi/node_modules",
     `ln -s /home/reader/src/odi/node_modules ${tree}/node_modules`,
     "/usr/bin/bun node_modules/vite/bin/vite.js build --config vite.mockup.config.ts --logLevel warn",
-    `rm -f ${tree}/node_modules`,
+    `rm -f -- ${tree}/node_modules`,
     `git -C /home/reader/src/odi worktree remove --force ${tree}`,
+    `test -e ${tree}/.git`,
+    `rmdir -- ${join(video, "build")}`,
   ]);
-  expect(commands[5]?.cwd).toBe(tree);
+  expect(commands[6]?.cwd).toBe(tree);
+  // Every file of the worktree went through the shell: the entry in, the page and its assets out.
+  expect(files).toEqual([
+    `read ${tree}/frontend/mockup/mockup-main.tsx`,
+    `write ${tree}/frontend/mockup/mockup-main.tsx`,
+    `read ${tree}/dist-mockup/mockup.html`,
+    `read ${tree}/dist-mockup/assets/m.js`,
+    `read ${tree}/dist-mockup/assets/m.css`,
+  ]);
   // The worktree and the emptied build folder are gone; the reader's checkout was only asked.
   expect(existsSync(join(video, "build"))).toBe(false);
   const html = await readFile(page.file, "utf8");
@@ -169,9 +225,13 @@ test("a failed build still removes the links and the worktree, and says what the
   await expect(
     harnessPage({ shell, checkouts: CHECKOUTS, cacheDir, runtime: "bun" }, "odi", [], video),
   ).rejects.toThrow("The odi harness build failed (exit 1): error: Could not resolve ./targets/x");
-  const argv = commands.map((each) => each.argv.slice(0, 4).join(" "));
-  expect(argv.slice(-2)[0]?.startsWith("rm -f")).toBe(true);
-  expect(argv.at(-1)).toBe("git -C /home/reader/src/odi worktree");
+  const argv = commands.map((each) => each.argv.slice(0, 5).join(" "));
+  expect(argv.slice(-4)).toEqual([
+    `rm -f -- ${commands.find((each) => each.argv[4] === "add")?.argv[6]}/node_modules`,
+    "git -C /home/reader/src/odi worktree remove",
+    `test -e ${commands.at(-2)?.argv[2]}`,
+    `rmdir -- ${join(video, "build")}`,
+  ]);
   expect(existsSync(join(video, "build"))).toBe(false);
   expect(existsSync(cacheDir)).toBe(false);
 });
@@ -198,28 +258,39 @@ test("a checkout without node_modules is refused, and its worktree removed", asy
   await expect(
     harnessPage({ shell, checkouts: CHECKOUTS, cacheDir, runtime: "bun" }, "odi", [], video),
   ).rejects.toThrow("has no node_modules");
-  expect(commands.at(-1)?.argv.slice(3, 5)).toEqual(["worktree", "remove"]);
+  expect(commands.some((each) => each.argv[3] === "worktree" && each.argv[4] === "remove")).toBe(
+    true,
+  );
   expect(existsSync(join(video, "build"))).toBe(false);
 });
 
-test("through WSL, commands name the video folder as WSL sees it and the runtime is looked for there", async () => {
+test("through WSL the worktree is on WSL's own disk, only the page comes back, and the runtime is looked for there", async () => {
   const { video, cacheDir } = setup();
-  const { shell, commands } = fakeShell({ wsl: true });
-  await harnessPage(
+  const home = mkdtempSync(join(tmpdir(), "wsl-home-"));
+  const { shell, commands, files } = fakeShell({ wsl: true, home });
+  const page = await harnessPage(
     { shell, checkouts: { ...CHECKOUTS, odi: "/srv/odi" }, cacheDir },
     "odi",
     [],
     video,
   );
   const add = commands.find((each) => each.argv[4] === "add");
-  expect(add?.argv[6]?.startsWith(`/mnt/host${join(video, "build")}`)).toBe(true);
+  const build = join(home, ".cache", "prifly-demo-video", "build");
+  expect(add?.argv[6]?.startsWith(`${build}/odi-28974524-`)).toBe(true);
   expect(add?.argv[2]).toBe("/srv/odi");
+  // Nothing of the build touched the video's folder on the host; the page is in the host's cache.
+  expect(existsSync(join(video, "build"))).toBe(false);
+  expect(commands.some((each) => each.argv.join(" ").includes(video))).toBe(false);
+  expect(files.every((each) => each.includes(build))).toBe(true);
+  expect(await readFile(page.file, "utf8")).toContain("<style>body{margin:0}</style>");
+  // Cleaned up inside WSL: the worktree and the emptied build folder are gone.
+  expect(existsSync(build)).toBe(false);
   // No runtime was given: the first candidate inside WSL that `test -x` accepts.
-  expect(commands.some((each) => each.argv.join(" ") === "test -x /home/reader/.bun/bin/bun")).toBe(
+  expect(commands.some((each) => each.argv.join(" ") === `test -x ${home}/.bun/bin/bun`)).toBe(
     true,
   );
   expect(commands.find((each) => each.argv[1] === "node_modules/vite/bin/vite.js")?.argv[0]).toBe(
-    "/home/reader/.bun/bin/bun",
+    `${home}/.bun/bin/bun`,
   );
 });
 

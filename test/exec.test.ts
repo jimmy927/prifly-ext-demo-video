@@ -1,4 +1,7 @@
 import { expect, test } from "bun:test";
+import { existsSync, mkdtempSync, readdirSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { type Exec, expandHome, failure, repoShell, toWslPath, wslArgv } from "../src/exec";
 
 test("a Windows path is named as WSL mounts it; a WSL path is left as it is", () => {
@@ -97,4 +100,45 @@ test("~ expands to the home there; a failure keeps the end of what the command s
   expect(
     failure("git worktree", { code: 128, out: "", err: "fatal: not a git repository\n" }).message,
   ).toBe("git worktree failed (exit 128): fatal: not a git repository");
+});
+
+test("inside WSL a file is read with cat and written by one cp from a staged copy, which goes after", async () => {
+  const stage = mkdtempSync(join(tmpdir(), "stage-"));
+  let staged = "";
+  const { exec, calls } = recording((argv) => {
+    if (argv.includes("cat")) return { code: 0, out: "page \0 bytes", err: "" };
+    if (argv.includes("cp")) {
+      staged = argv.at(-2) ?? "";
+      return { code: existsSync(staged) ? 0 : 1, out: "", err: "" };
+    }
+    return { code: 0, out: "", err: "" };
+  });
+  const shell = repoShell({
+    platform: "win32",
+    distro: "",
+    exec,
+    homeHere: "C:\\Users\\j",
+    stageDir: stage,
+  });
+  // What the program printed is kept as it is, NULs included.
+  expect(await shell.readText("/home/j/.cache/b/x/dist/page.html")).toBe("page \0 bytes");
+  await shell.writeText("/home/j/.cache/b/x/frontend/mockup/mockup-main.tsx", "entry");
+  expect(calls.map((each) => each.argv.slice(1))).toEqual([
+    ["--", "cat", "--", "/home/j/.cache/b/x/dist/page.html"],
+    ["--", "mkdir", "-p", "--", "/home/j/.cache/b/x/frontend/mockup"],
+    ["--", "cp", "--", staged, "/home/j/.cache/b/x/frontend/mockup/mockup-main.tsx"],
+  ]);
+  expect(readdirSync(stage)).toEqual([]);
+});
+
+test("a file WSL cannot read says why", async () => {
+  const { exec } = recording(() => ({
+    code: 1,
+    out: "",
+    err: "cat: /x: No such file or directory",
+  }));
+  const shell = repoShell({ platform: "win32", distro: "", exec, homeHere: "C:\\Users\\j" });
+  await expect(shell.readText("/x")).rejects.toThrow(
+    "Reading /x in WSL failed (exit 1): cat: /x: No such file or directory",
+  );
 });
