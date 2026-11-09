@@ -103,9 +103,9 @@ test("a scene file edited by hand opens: the bad scene is reported, not a crash"
   expect(read.problems).toHaveLength(1);
 });
 
-test("dry run, render and export say they are not available yet", async () => {
+test("render and export say they are not available yet", async () => {
   const s = studio();
-  for (const path of ["dry-run", "render", "export"]) {
+  for (const path of ["render", "export"]) {
     expect(await s.ask(path, {})).toMatchObject({ available: false });
   }
 });

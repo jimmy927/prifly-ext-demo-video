@@ -66,15 +66,15 @@ export type DryRunResult = {
  * it is there but off screen; where it is, or why it cannot be used.
  */
 async function target(page: Page, selector: string, within: number) {
-  const end = Date.now() + within;
-  for (;;) {
+  // Timed by the waits themselves (a probe takes a few ms), so a fake page's tests take none.
+  for (let waited = 0; ; waited += POLL_MS) {
     let probe = await page.probe(selector);
     if (probe.found && !probe.visible) {
       await page.reveal(selector);
       probe = await page.probe(selector);
     }
     if (probe.found && probe.visible) return { probe } as const;
-    if (Date.now() >= end) {
+    if (waited >= within) {
       if (probe.found) return { reason: "is on the page but not visible" } as const;
       return { reason: `is not on the page after ${within / 1000} s` } as const;
     }
