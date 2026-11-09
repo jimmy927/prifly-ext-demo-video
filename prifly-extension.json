@@ -1,0 +1,58 @@
+{
+  "id": "demo-video",
+  "name": "Demo studio",
+  "description": "Turns a brief into a script and a storyboard for a narrated product demo video, with Claude writing the script through the demo_* tools.",
+  "version": "0.1.0",
+  "main": "index.ts",
+  "prompt": "prompt.md",
+  "launch": [
+    {
+      "id": "demo",
+      "label": "Demo studio script",
+      "icon": "file-text",
+      "description": "Started by the Demo studio panel's Write the script and Ask Claude to tighten buttons; it lists nothing itself."
+    }
+  ],
+  "panels": [
+    {
+      "id": "studio",
+      "label": "Demo studio",
+      "icon": "file-text",
+      "description": "Brief, script, storyboard and video for product demos",
+      "folder": "panel",
+      "page": "index.html"
+    }
+  ],
+  "settings": [
+    {
+      "id": "elevenLabsKey",
+      "label": "ElevenLabs API key",
+      "description": "For the published cut's voice. Kept in this extension's own secrets, never in the vault.",
+      "type": "secret",
+      "default": false
+    },
+    {
+      "id": "voiceSv",
+      "label": "Swedish voice (Edge)",
+      "description": "The draft voice for Swedish narration.",
+      "type": "select",
+      "default": "sv-SE-SofieNeural",
+      "options": ["sv-SE-SofieNeural", "sv-SE-MattiasNeural"]
+    },
+    {
+      "id": "voiceEn",
+      "label": "English voice (Edge)",
+      "description": "The draft voice for English narration.",
+      "type": "select",
+      "default": "en-GB-SoniaNeural",
+      "options": [
+        "en-GB-SoniaNeural",
+        "en-GB-RyanNeural",
+        "en-GB-LibbyNeural",
+        "en-US-AriaNeural",
+        "en-US-GuyNeural",
+        "en-US-JennyNeural"
+      ]
+    }
+  ]
+}
