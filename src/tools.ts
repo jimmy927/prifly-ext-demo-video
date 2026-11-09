@@ -129,12 +129,11 @@ export function demoTools(
     {
       name: "demo_render",
       description:
-        "Renders a video to <video>/out/<lang>.mp4 at 1920x1080 for each language in its brief: voices every scene (cached by text and voice), records each scene in Demo studio's own headless browser, zooms toward each click, burns in subtitles, joins the scenes and mixes in the narration. redo 'all' (default) records every scene again; redo 'noted' records only the scenes the reader left notes on. final true uses ElevenLabs (it costs characters on the reader's plan) instead of the Edge draft voices. Waits until it ends; only one render runs at a time. Changes only the video's own audio, takes and out folders.",
+        "Renders a video to <video>/out/<lang>.mp4 at 1920x1080 for each language in its brief: voices every scene (cached by text and voice), records each scene in Demo studio's own headless browser, zooms toward each click, burns in subtitles, joins the scenes and mixes in the narration. redo 'all' (default) records every scene again; redo 'noted' records only the scenes the reader left notes on. Always uses the Edge draft voices: Final voice (ElevenLabs, which spends the reader's characters) is the reader's own checkbox on the Video tab. Waits until it ends; only one render runs at a time. Changes only the video's own audio, takes and out folders.",
       inputSchema: objectSchema(
         {
           video: VIDEO,
           redo: { type: "string", enum: ["all", "noted"] },
-          final: { type: "boolean" },
         },
         ["video"],
       ),
@@ -142,7 +141,7 @@ export function demoTools(
         renderText(
           await render().runAndWait(videoArg(args), {
             redo: args["redo"] === "noted" ? "noted" : "all",
-            final: args["final"] === true,
+            final: false,
           }),
         ),
     },

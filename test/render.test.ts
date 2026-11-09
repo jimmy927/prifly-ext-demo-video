@@ -56,6 +56,19 @@ test("the frame list shows each frame until the next, the last until the scene e
   expect(() => frameList([], 1000)).toThrow("no frames");
 });
 
+test("frames faster than 30 fps keep their real gaps, so the list sums to the scene's length", () => {
+  const frames = Array.from({ length: 50 }, (_, index) => ({
+    file: `f${index}.jpg`,
+    t: index * 10,
+  }));
+  const durations = [...frameList(frames, 2000).matchAll(/^duration (.+)$/gm)].map((match) =>
+    Number(match[1]),
+  );
+  expect(durations).toHaveLength(50);
+  expect(durations[0]).toBe(0.01);
+  expect(durations.reduce((sum, each) => sum + each, 0)).toBeCloseTo(2, 6);
+});
+
 test("the segment rebuilds a steady 30 fps and ends exactly at the scene's length", () => {
   const graph = segmentGraph(scene(), null);
   expect(graph).toContain("fps=30");

@@ -26,7 +26,7 @@ import { LEAD_MS, type TakeEvent, type TakeFrame } from "./take";
 import { countWords, WORDS_PER_SECOND } from "./timing";
 
 /** Bumped when a segment of the same take would come out differently. */
-const RENDER_VERSION = 1;
+const RENDER_VERSION = 2;
 
 export const FPS = 30;
 export const SIZE = { width: 1920, height: 1080 } as const;
@@ -86,7 +86,9 @@ export function frameList(frames: readonly TakeFrame[], durationMs: number): str
   const lines = ["ffconcat version 1.0"];
   frames.forEach((frame, index) => {
     const next = frames[index + 1]?.t ?? durationMs;
-    const shown = Math.max(1000 / FPS, next - frame.t);
+    // The real gap, so the frames stay on the recorded clock the zoom and narration use;
+    // the `fps` filter drops the excess. The floor is only for two frames with one timestamp.
+    const shown = Math.max(1, next - frame.t);
     lines.push(`file '${frame.file}'`, `duration ${sec(shown)}`);
   });
   // The demuxer applies the last duration only when the last file is named again.
