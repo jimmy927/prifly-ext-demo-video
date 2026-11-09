@@ -11,13 +11,15 @@ export type RunStatus =
   | { state: "idle"; video: string | null }
   | { state: "running"; video: string; progress: Progress; startedAt: number };
 
+type Entry<R> = {
+  video: string;
+  progress: Progress;
+  startedAt: number;
+  done: Promise<R | null>;
+};
+
 export class BackgroundRuns<R> {
-  private current: {
-    video: string;
-    progress: Progress;
-    startedAt: number;
-    done: Promise<R | null>;
-  } | null = null;
+  private current: Entry<R> | null = null;
   private lastError = new Map<string, string>();
 
   status(): RunStatus {
@@ -43,7 +45,7 @@ export class BackgroundRuns<R> {
     if (this.current !== null) return { started: false, running: this.current.video };
     this.lastError.delete(video);
     const progress: Progress = { done: 0, total: 0, line: "Starting…" };
-    const entry: NonNullable<typeof this.current> = {
+    const entry: Entry<R> = {
       video,
       progress,
       startedAt: Date.now(),

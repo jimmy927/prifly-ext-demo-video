@@ -7,6 +7,7 @@
 
 import { S, setData } from "./state.js";
 import { $, call, el, setNotice } from "./ui.js";
+import { followRender, startRender } from "./video.js";
 
 /** Stills already fetched, by video, scene and when the still was taken. */
 const stills = new Map();
@@ -234,15 +235,6 @@ export function followDryRun() {
 
 export { dryDisabled };
 
-async function renderAll() {
-  try {
-    const answer = await call("render", { id: S.id });
-    setNotice(answer.message);
-  } catch {
-    // The error line shows why.
-  }
-}
-
 export function storyboardTab(rerender) {
   const scenes = S.data.scenes;
   const approved = scenes.filter((scene) => scene.review.status === "approved").length;
@@ -251,11 +243,16 @@ export function storyboardTab(rerender) {
     {
       type: "button",
       class: "primary",
-      disabled: scenes.length === 0 || approved < scenes.length || S.busy,
+      id: "story-render",
+      disabled:
+        scenes.length === 0 ||
+        approved < scenes.length ||
+        S.busy ||
+        (S.data.render?.runningVideo ?? null) !== null,
     },
     "Approve and render",
   );
-  render.addEventListener("click", renderAll);
+  render.addEventListener("click", () => startRender("all"));
   const dry = el("button", { type: "button", id: "dry-run", disabled: dryDisabled() }, "Dry run");
   dry.addEventListener("click", startDryRun);
   const { text, tone } = dryLine();
@@ -270,6 +267,7 @@ export function storyboardTab(rerender) {
       el("span", { class: "hint" }, `${approved} of ${scenes.length} scenes approved`),
     ),
     el("p", { class: `dry-line ${tone}`, id: "dry-line", title: text }, text),
+    el("p", { class: "dry-line", id: "story-render-line" }),
   );
   if (scenes.length === 0) {
     root.append(el("p", { class: "muted" }, "No scenes yet. Write the script first."));
@@ -278,6 +276,9 @@ export function storyboardTab(rerender) {
       el("div", { class: "sheet" }, ...scenes.map((scene, index) => card(scene, index, rerender))),
     );
   }
-  queueMicrotask(followDryRun);
+  queueMicrotask(() => {
+    followDryRun();
+    followRender();
+  });
   return root;
 }
