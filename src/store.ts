@@ -16,6 +16,7 @@ import {
   parseBriefStrict,
   parseScenesStrict,
   type ReviewStatus,
+  rawScenes,
   readBriefTolerant,
   readScenesTolerant,
   type Scene,
@@ -78,7 +79,7 @@ async function readJson(path: string): Promise<unknown> {
 
 /** Written whole through a temp file, so a crash never leaves half a file. */
 async function writeJson(path: string, value: unknown): Promise<void> {
-  const temp = `${path}.tmp`;
+  const temp = `${path}.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`;
   await writeFile(temp, `${JSON.stringify(value, null, 2)}\n`, "utf8");
   await rename(temp, path);
 }
@@ -170,16 +171,23 @@ export function createStore(state: ExtensionStateApi | undefined, root: string):
       return parsed.scenes;
     },
     async setReview(id, sceneId, status, notes) {
-      const { scenes } = await this.readScenes(id);
-      const at = scenes.findIndex((each) => each.id === sceneId);
-      const scene = scenes[at];
-      if (scene === undefined) throw new StoreError(`No scene ${sceneId} in ${id}`);
-      const next: Scene = {
-        ...scene,
-        review: { status, notes: notes ?? scene.review.notes },
-      };
-      scenes[at] = next;
-      await writeJson(join(folder(id), "scenes.json"), scenesFile(scenes));
+      // Edited in the raw JSON, so scenes the tolerant reader leaves out and
+      // fields it does not know survive a click.
+      const path = join(folder(id), "scenes.json");
+      const raw = await readJson(path);
+      const target = (rawScenes(raw) ?? []).find(
+        (each) =>
+          typeof each === "object" &&
+          each !== null &&
+          (each as Record<string, unknown>)["id"] === sceneId,
+      ) as Record<string, unknown> | undefined;
+      const scene = readScenesTolerant(raw).scenes.find((each) => each.id === sceneId);
+      if (target === undefined || scene === undefined) {
+        throw new StoreError(`No scene ${sceneId} in ${id}`);
+      }
+      const next: Scene = { ...scene, review: { status, notes: notes ?? scene.review.notes } };
+      target["review"] = next.review;
+      await writeJson(path, raw);
       await touch(id, {});
       return next;
     },

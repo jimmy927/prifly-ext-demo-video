@@ -35,17 +35,16 @@ const sameContent = (a: Scene, b: Scene): boolean =>
   JSON.stringify([b.title, b.narration, b.onScreen, b.source, b.steps]);
 
 /**
- * A scene that comes back unchanged and unreviewed keeps the review the
- * reader gave it; a scene whose words or screen changed starts again as
- * pending, since what was approved is no longer what is there.
+ * Decided from content alone: a scene whose words, screen, source and steps
+ * are as stored keeps the stored review; anything else starts again as
+ * pending (keeping the notes it carries), since what was approved is no
+ * longer what is there. A review the caller sends back changes nothing.
  */
 function keepReviews(scenes: readonly Scene[], before: readonly Scene[]): Scene[] {
   return scenes.map((scene) => {
-    const unreviewed = scene.review.status === "pending" && scene.review.notes.length === 0;
     const old = before.find((each) => each.id === scene.id);
-    return unreviewed && old !== undefined && sameContent(old, scene)
-      ? { ...scene, review: old.review }
-      : scene;
+    if (old !== undefined && sameContent(old, scene)) return { ...scene, review: old.review };
+    return { ...scene, review: { status: "pending", notes: scene.review.notes } };
   });
 }
 

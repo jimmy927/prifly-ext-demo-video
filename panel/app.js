@@ -110,6 +110,8 @@ function wireTabs() {
   $("tabs").addEventListener("click", (event) => {
     const tab = event.target.closest("button")?.dataset.tab;
     if (tab === undefined || S.data === null) return;
+    // The brief form is rebuilt from the saved brief, so unsaved edits end here.
+    S.briefDirty = false;
     S.tab = tab;
     drawBody();
   });

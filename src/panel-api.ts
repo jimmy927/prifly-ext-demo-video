@@ -79,7 +79,7 @@ export async function answerPanel(context: PanelContext, request: PanelRequest):
     case "config":
       return config(context);
     case "videos": {
-      if (body === null) return { videos: await store().list() };
+      if (body === null || body === undefined) return { videos: await store().list() };
       const product = PRODUCTS.find((each) => each === field(body, "product"));
       if (product === undefined) throw new Error("product must be odi or prifly");
       return { created: await store().create(text(body, "title"), product) };

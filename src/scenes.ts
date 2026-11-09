@@ -85,7 +85,7 @@ function idAt(raw: unknown): string | null {
 }
 
 /** The scenes of a file's JSON: `{ scenes: [...] }` or a bare array. */
-function rawScenes(raw: unknown): unknown[] | null {
+export function rawScenes(raw: unknown): unknown[] | null {
   if (Array.isArray(raw)) return raw;
   if (typeof raw === "object" && raw !== null) {
     const scenes = (raw as Record<string, unknown>)["scenes"];

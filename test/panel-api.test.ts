@@ -127,3 +127,34 @@ test("the panel's buttons launch a session carrying the brief and the video id",
   expect((await s.ask("video", null, { id: created.id })).session).toBe("session-1");
   expect(await extension.choices("demo", "")).toEqual([]);
 });
+
+test("an approved scene edited in the editor starts over, even when its review comes back approved", async () => {
+  const s = studio();
+  const { created } = await s.ask("videos", { title: "V", product: "odi" });
+  const id = created.id;
+  await s.ask("scenes", { id, scenes: [SCENE] });
+  const approved = await s.ask("review", { id, scene: "pain", status: "approved" });
+  const edited = { ...approved.scenes[0], narration: { en: "Different words." } };
+  const saved = await s.ask("scenes", { id, scenes: [edited] });
+  expect(saved.scenes[0].review.status).toBe("pending");
+  const same = await s.ask("review", { id, scene: "pain", status: "approved" });
+  const again = await s.ask("scenes", { id, scenes: same.scenes });
+  expect(again.scenes[0].review.status).toBe("approved");
+});
+
+test("approving a scene leaves hand-edited scenes and fields in the file", async () => {
+  const s = studio();
+  const { created } = await s.ask("videos", { title: "V", product: "odi" });
+  const { readFile, writeFile } = await import("node:fs/promises");
+  const path = `${s.dir}/${created.id}/scenes.json`;
+  await writeFile(
+    path,
+    JSON.stringify({ scenes: [{ ...SCENE, colour: "red" }, { id: "broken" }] }),
+  );
+  await s.ask("review", { id: created.id, scene: "pain", status: "approved" });
+  const file = JSON.parse(await readFile(path, "utf8"));
+  expect(file.scenes).toHaveLength(2);
+  expect(file.scenes[0].colour).toBe("red");
+  expect(file.scenes[0].review.status).toBe("approved");
+  expect(file.scenes[1]).toEqual({ id: "broken" });
+});

@@ -22,7 +22,7 @@ export function liveTiming(language) {
   const seconds = total / wps;
   const target = S.data.brief.targetSeconds;
   const share = seconds / target;
-  const state = share > S.config.maxNarrationShare ? "over" : "ok";
+  const state = share > S.config.maxNarrationShare ? "over" : share < 0.5 ? "thin" : "ok";
   return { total, seconds, share, state, target };
 }
 
@@ -31,7 +31,9 @@ function timingLine(language) {
   const note =
     t.state === "over"
       ? "too long: aim for at most 75 % of the target"
-      : "fits the 25-30 % headroom";
+      : t.state === "thin"
+        ? "thin: under half the target; check nothing is missing"
+        : "fits the 25-30 % headroom";
   return el(
     "div",
     { class: t.state },
