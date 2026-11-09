@@ -40,10 +40,22 @@ export function drawBody() {
   if (S.id === null) {
     const empty = S.videos !== null && S.videos.length === 0;
     body.replaceChildren(
-      el("p", { class: "muted" }, empty ? "Make your first video: give it a title and press New video." : "Pick a video on the left."),
+      el(
+        "p",
+        { class: "muted" },
+        empty
+          ? "Make your first video: give it a title and press New video."
+          : "Pick a video on the left.",
+      ),
     );
   } else if (S.data === null) {
-    body.replaceChildren(el("p", { class: "muted" }, S.loadingVideo ? "Reading the video…" : "This video could not be read."));
+    body.replaceChildren(
+      el(
+        "p",
+        { class: "muted" },
+        S.loadingVideo ? "Reading the video…" : "This video could not be read.",
+      ),
+    );
   } else {
     body.replaceChildren(TABS[S.tab](drawBody));
   }

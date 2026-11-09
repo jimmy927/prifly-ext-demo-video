@@ -35,7 +35,11 @@ function readForm(form) {
 function validity(brief) {
   if (brief.title === "") return "A title is needed.";
   if (brief.languages.length === 0) return "Pick at least one language.";
-  if (!Number.isInteger(brief.targetSeconds) || brief.targetSeconds < 10 || brief.targetSeconds > 600) {
+  if (
+    !Number.isInteger(brief.targetSeconds) ||
+    brief.targetSeconds < 10 ||
+    brief.targetSeconds > 600
+  ) {
     return "The target length is 10 to 600 seconds.";
   }
   return null;
@@ -43,7 +47,11 @@ function validity(brief) {
 
 export function briefTab(onSaved) {
   const brief = S.data.brief;
-  const save = el("button", { type: "button", class: "primary", disabled: !S.briefDirty }, "Save brief");
+  const save = el(
+    "button",
+    { type: "button", class: "primary", disabled: !S.briefDirty },
+    "Save brief",
+  );
   const problem = el("span", { class: "hint" }, "");
   const form = el("form", { class: "form" });
   const markDirty = () => {
@@ -55,7 +63,12 @@ export function briefTab(onSaved) {
   for (const [key, label, kind] of TEXT_FIELDS) {
     form.append(el("label", {}, label, textControl(brief, key, kind, markDirty)));
   }
-  const product = el("select", { name: "product" }, el("option", { value: "odi" }, "Artemis (ODI)"), el("option", { value: "prifly" }, "prifly"));
+  const product = el(
+    "select",
+    { name: "product" },
+    el("option", { value: "odi" }, "Artemis (ODI)"),
+    el("option", { value: "prifly" }, "prifly"),
+  );
   product.value = brief.product;
   product.addEventListener("change", markDirty);
   const seconds = el("input", { type: "number", name: "targetSeconds", min: "10", max: "600" });

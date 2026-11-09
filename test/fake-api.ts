@@ -14,9 +14,12 @@
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
+/** Newer than the pinned api (v0.8.0) knows; kept loose so the fake runs on it. */
+type AskSnoozeSpec = Record<string, unknown>;
+type AskSnoozeAnswer = Record<string, unknown>;
+
 import type {
-  AskSnoozeAnswer,
-  AskSnoozeSpec,
   ConfirmSpec,
   Decoration,
   ExtensionApi,
@@ -267,7 +270,7 @@ export function fakeApi(
     statuses: [],
     documents,
   };
-  const api: ExtensionApi = {
+  const api = {
     features: [
       "settings",
       "start-session",
@@ -316,12 +319,12 @@ export function fakeApi(
     start: async () => ({ started: false, reason: "A fake api starts no session." }),
     // Only for what the reader clicked; a request from a session or a timer asks with `askSnooze`.
     snooze: () => undefined,
-    askSnooze: async (sessionId, spec) => {
+    askSnooze: async (sessionId: string, spec: AskSnoozeSpec) => {
       fake.snoozeAsks.push({ ...spec, sessionId });
       return options.askSnooze ?? { ok: false, reason: "cancelled" };
     },
     dialog: async () => null,
-  };
+  } as ExtensionApi;
   const callTool: FakeApi["callTool"] = async (name, args, pick = null) => {
     const tool = tools.find((each) => each.name === name);
     if (tool === undefined) throw new Error(`No tool ${name} registered`);

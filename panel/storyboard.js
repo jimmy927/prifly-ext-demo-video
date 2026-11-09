@@ -34,16 +34,19 @@ function card(scene, index, rerender) {
   note.addEventListener("input", () => {
     add.disabled = note.value.trim() === "" || S.busy;
   });
-  approve.addEventListener("click", () =>
-    review(scene, "approved", scene.review.notes, rerender),
-  );
+  approve.addEventListener("click", () => review(scene, "approved", scene.review.notes, rerender));
   add.addEventListener("click", () =>
     review(scene, "noted", [...scene.review.notes, note.value.trim()], rerender),
   );
   return el(
     "div",
     { class: "card" },
-    el("div", { class: "row" }, el("strong", { class: "grow" }, `${index + 1}. ${scene.title}`), el("span", { class: "badge" }, scene.review.status)),
+    el(
+      "div",
+      { class: "row" },
+      el("strong", { class: "grow" }, `${index + 1}. ${scene.title}`),
+      el("span", { class: "badge" }, scene.review.status),
+    ),
     el("div", { class: "frame" }, narrationOf(scene)),
     el("ul", { class: "notes" }, ...scene.review.notes.map((text) => el("li", {}, text))),
     note,
@@ -65,20 +68,35 @@ export function storyboardTab(rerender) {
   const approved = scenes.filter((scene) => scene.review.status === "approved").length;
   const render = el(
     "button",
-    { type: "button", class: "primary", disabled: scenes.length === 0 || approved < scenes.length || S.busy },
+    {
+      type: "button",
+      class: "primary",
+      disabled: scenes.length === 0 || approved < scenes.length || S.busy,
+    },
     "Approve and render",
   );
   render.addEventListener("click", renderAll);
   const root = el(
     "div",
     {},
-    el("div", { class: "row" }, render, el("span", { class: "hint" }, `${approved} of ${scenes.length} scenes approved`)),
-    el("p", { class: "hint" }, "Stills come with the dry run in a later version; for now each frame shows the narration."),
+    el(
+      "div",
+      { class: "row" },
+      render,
+      el("span", { class: "hint" }, `${approved} of ${scenes.length} scenes approved`),
+    ),
+    el(
+      "p",
+      { class: "hint" },
+      "Stills come with the dry run in a later version; for now each frame shows the narration.",
+    ),
   );
   if (scenes.length === 0) {
     root.append(el("p", { class: "muted" }, "No scenes yet. Write the script first."));
     return root;
   }
-  root.append(el("div", { class: "sheet" }, ...scenes.map((scene, index) => card(scene, index, rerender))));
+  root.append(
+    el("div", { class: "sheet" }, ...scenes.map((scene, index) => card(scene, index, rerender))),
+  );
   return root;
 }

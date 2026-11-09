@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { readFile, readdir } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { SCENE, studio } from "./studio";
 
@@ -20,7 +20,10 @@ test("activate registers the five tools, none of which asks the reader", async (
     "demo_notes",
   ]);
   const id = await newVideo(s);
-  await s.fake.callTool("demo_brief_set", { video: id, brief: { title: "Hero video", product: "odi" } });
+  await s.fake.callTool("demo_brief_set", {
+    video: id,
+    brief: { title: "Hero video", product: "odi" },
+  });
   await s.fake.callTool("demo_script_set", { video: id, scenes: [SCENE] });
   expect(s.fake.confirms).toEqual([]);
 });
@@ -32,7 +35,13 @@ test("demo_list says when there are no videos, then lists them", async () => {
   const listed = JSON.parse(await s.fake.callTool("demo_list", {}));
   expect(listed).toMatchObject([{ id, title: "Hero video", product: "odi" }]);
   // The index in api.state holds only the index fields.
-  expect(Object.keys(listed[0]).sort()).toEqual(["id", "languages", "product", "title", "updatedAt"]);
+  expect(Object.keys(listed[0]).sort()).toEqual([
+    "id",
+    "languages",
+    "product",
+    "title",
+    "updatedAt",
+  ]);
 });
 
 test("a new video gets its folder with brief, scenes and the empty subfolders", async () => {
@@ -46,7 +55,10 @@ test("a new video gets its folder with brief, scenes and the empty subfolders", 
     "stills",
     "takes",
   ]);
-  expect(JSON.parse(await readFile(join(s.dir, id, "scenes.json"), "utf8"))).toEqual({ version: 1, scenes: [] });
+  expect(JSON.parse(await readFile(join(s.dir, id, "scenes.json"), "utf8"))).toEqual({
+    version: 1,
+    scenes: [],
+  });
 });
 
 test("demo_brief_set validates, writes and demo_brief_get reads it back", async () => {
@@ -107,7 +119,10 @@ test("demo_script_set refuses a script that does not fit, naming the scene, and 
   const id = await newVideo(s);
   await s.fake.callTool("demo_script_set", { video: id, scenes: [SCENE] });
   await expect(
-    s.fake.callTool("demo_script_set", { video: id, scenes: [{ ...SCENE, bogus: 1 }, { id: "x" }] }),
+    s.fake.callTool("demo_script_set", {
+      video: id,
+      scenes: [{ ...SCENE, bogus: 1 }, { id: "x" }],
+    }),
   ).rejects.toThrow(/scene 1 \(pain\)[\s\S]*scene 2 \(x\)/);
   expect((await s.ask("video", null, { id })).scenes).toHaveLength(1);
 });
@@ -124,15 +139,26 @@ test("an unchanged scene keeps its review when the script is saved again; a chan
     scenes: [SCENE, { ...other, narration: { en: "New words." } }],
   });
   const scenes = (await s.ask("video", null, { id })).scenes;
-  expect(scenes.map((scene: { review: { status: string } }) => scene.review.status)).toEqual(["approved", "pending"]);
+  expect(scenes.map((scene: { review: { status: string } }) => scene.review.status)).toEqual([
+    "approved",
+    "pending",
+  ]);
 });
 
 test("demo_notes returns the reader's notes per scene", async () => {
   const s = studio();
   const id = await newVideo(s);
   expect(await s.fake.callTool("demo_notes", { video: id })).toBe("No scenes yet.");
-  await s.fake.callTool("demo_script_set", { video: id, scenes: [SCENE, { ...SCENE, id: "b", title: "B" }] });
-  await s.ask("review", { id, scene: "pain", status: "noted", notes: ["Too slow", "Cut the intro"] });
+  await s.fake.callTool("demo_script_set", {
+    video: id,
+    scenes: [SCENE, { ...SCENE, id: "b", title: "B" }],
+  });
+  await s.ask("review", {
+    id,
+    scene: "pain",
+    status: "noted",
+    notes: ["Too slow", "Cut the intro"],
+  });
   const notes = await s.fake.callTool("demo_notes", { video: id });
   expect(notes).toContain("pain (The pain): noted\n  - Too slow\n  - Cut the intro");
   expect(notes).toContain("b (B): pending");

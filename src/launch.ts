@@ -16,7 +16,8 @@ export type LaunchKey = { kind: "write" | "tighten"; video: string };
 export function parseKey(key: string): LaunchKey {
   const at = key.indexOf(":");
   const kind = key.slice(0, at);
-  if (at < 0 || (kind !== "write" && kind !== "tighten")) throw new Error(`Not a Demo studio key: ${key}`);
+  if (at < 0 || (kind !== "write" && kind !== "tighten"))
+    throw new Error(`Not a Demo studio key: ${key}`);
   return { kind, video: key.slice(at + 1) };
 }
 

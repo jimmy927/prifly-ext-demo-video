@@ -26,7 +26,11 @@ test("create, list, read and save a brief through the panel routes", async () =>
   const s = studio();
   expect(await s.ask("videos")).toEqual({ videos: [] });
   const { created } = await s.ask("videos", { title: "Role analysis", product: "odi" });
-  expect(created).toMatchObject({ id: "role-analysis", title: "Role analysis", languages: ["sv", "en"] });
+  expect(created).toMatchObject({
+    id: "role-analysis",
+    title: "Role analysis",
+    languages: ["sv", "en"],
+  });
   expect((await s.ask("videos")).videos).toHaveLength(1);
   const read = await s.ask("video", null, { id: "role-analysis" });
   expect(read.brief.title).toBe("Role analysis");
@@ -48,8 +52,12 @@ test("two videos with the same title get different ids", async () => {
 
 test("errors come back as throws the host turns into the page's inline error", async () => {
   const s = studio();
-  await expect(s.ask("videos", { title: "  ", product: "odi" })).rejects.toThrow("title is required");
-  await expect(s.ask("videos", { title: "x", product: "other" })).rejects.toThrow("product must be");
+  await expect(s.ask("videos", { title: "  ", product: "odi" })).rejects.toThrow(
+    "title is required",
+  );
+  await expect(s.ask("videos", { title: "x", product: "other" })).rejects.toThrow(
+    "product must be",
+  );
   await expect(s.ask("video", null, { id: "missing" })).rejects.toThrow("No video missing");
   await expect(s.ask("video", null, { id: "../../etc" })).rejects.toThrow("No video");
   await expect(s.ask("nonsense")).rejects.toThrow("No such request");
@@ -62,13 +70,24 @@ test("saving scenes from the editor is strict; review status and notes are saved
   const saved = await s.ask("scenes", { id, scenes: [SCENE] });
   expect(saved.scenes).toHaveLength(1);
   expect(saved.timing[0]).toMatchObject({ language: "sv" });
-  await expect(s.ask("scenes", { id, scenes: [{ ...SCENE, extra: 1 }] })).rejects.toThrow("does not fit");
-  const noted = await s.ask("review", { id, scene: "pain", status: "noted", notes: ["Slower", " "] });
+  await expect(s.ask("scenes", { id, scenes: [{ ...SCENE, extra: 1 }] })).rejects.toThrow(
+    "does not fit",
+  );
+  const noted = await s.ask("review", {
+    id,
+    scene: "pain",
+    status: "noted",
+    notes: ["Slower", " "],
+  });
   expect(noted.scenes[0].review).toEqual({ status: "noted", notes: ["Slower"] });
   const approved = await s.ask("review", { id, scene: "pain", status: "approved" });
   expect(approved.scenes[0].review).toEqual({ status: "approved", notes: ["Slower"] });
-  await expect(s.ask("review", { id, scene: "pain", status: "maybe" })).rejects.toThrow("status must be");
-  await expect(s.ask("review", { id, scene: "ghost", status: "approved" })).rejects.toThrow("No scene ghost");
+  await expect(s.ask("review", { id, scene: "pain", status: "maybe" })).rejects.toThrow(
+    "status must be",
+  );
+  await expect(s.ask("review", { id, scene: "ghost", status: "approved" })).rejects.toThrow(
+    "No scene ghost",
+  );
 });
 
 test("a scene file edited by hand opens: the bad scene is reported, not a crash", async () => {

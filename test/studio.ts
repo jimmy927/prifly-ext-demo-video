@@ -10,7 +10,9 @@ import { fakeApi } from "./fake-api";
 export function studio(options: { features?: string[]; noState?: boolean } = {}) {
   const dir = mkdtempSync(join(tmpdir(), "demo-videos-"));
   process.env["PRIFLY_DEMO_VIDEOS_DIR"] = dir;
-  const fake = fakeApi({ settings: { elevenLabsKey: false, voiceSv: "sv-SE-SofieNeural", voiceEn: "en-GB-SoniaNeural" } });
+  const fake = fakeApi({
+    settings: { elevenLabsKey: false, voiceSv: "sv-SE-SofieNeural", voiceEn: "en-GB-SoniaNeural" },
+  });
   if (options.features !== undefined) {
     Object.assign(fake.api, { features: options.features });
   }

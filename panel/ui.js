@@ -44,7 +44,10 @@ export async function call(path, body) {
 }
 
 export function words(text) {
-  return String(text ?? "").trim().split(/\s+/).filter((word) => word !== "").length;
+  return String(text ?? "")
+    .trim()
+    .split(/\s+/)
+    .filter((word) => word !== "").length;
 }
 
 /** The window's tokens: the colours and fonts of the prifly window. */

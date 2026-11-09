@@ -11,13 +11,19 @@ export function videoTab() {
   return el(
     "div",
     {},
-    el("div", { class: "row" },
+    el(
+      "div",
+      { class: "row" },
       el("button", { type: "button", disabled: true }, "Dry run"),
       el("button", { type: "button", disabled: true }, "Render"),
       el("button", { type: "button", disabled: true }, "Export"),
     ),
     media
-      ? el("p", { class: "muted" }, "No render yet. The recorder and renderer come in a later version.")
+      ? el(
+          "p",
+          { class: "muted" },
+          "No render yet. The recorder and renderer come in a later version.",
+        )
       : el("p", { class: "muted" }, "Video playback needs a newer prifly (panel-media)."),
     el(
       "p",

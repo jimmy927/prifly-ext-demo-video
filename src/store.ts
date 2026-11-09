@@ -12,12 +12,12 @@ import {
   type Brief,
   emptyBrief,
   type Language,
+  type Product,
   parseBriefStrict,
   parseScenesStrict,
-  type Product,
+  type ReviewStatus,
   readBriefTolerant,
   readScenesTolerant,
-  type ReviewStatus,
   type Scene,
   type ScenesProblem,
   scenesFile,
@@ -160,7 +160,8 @@ export function createStore(state: ExtensionStateApi | undefined, root: string):
       const parsed = parseScenesStrict(raw);
       if (!parsed.ok) {
         const lines = parsed.problems.map(
-          (each) => `scene ${each.index + 1}${each.id === null ? "" : ` (${each.id})`}: ${each.message}`,
+          (each) =>
+            `scene ${each.index + 1}${each.id === null ? "" : ` (${each.id})`}: ${each.message}`,
         );
         throw new StoreError(`The script does not fit:\n${lines.join("\n")}`);
       }
@@ -183,7 +184,7 @@ export function createStore(state: ExtensionStateApi | undefined, root: string):
       return next;
     },
     async sessionOf(id) {
-      return ((await state.get<Record<string, string>>(SESSIONS)) ?? {})[id] ?? null;
+      return (await state.get<Record<string, string>>(SESSIONS))?.[id] ?? null;
     },
     async rememberSession(id, session) {
       await state.update<Record<string, string>>(SESSIONS, (current) => ({

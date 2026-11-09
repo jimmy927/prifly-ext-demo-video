@@ -5,8 +5,8 @@
  */
 
 import type { PanelRequest, SettingValues } from "@prifly/extension-api";
-import { reportOn, saveScript } from "./script";
 import { PRODUCTS, REVIEW_STATUSES, type ReviewStatus } from "./scenes";
+import { reportOn, saveScript } from "./script";
 import type { Store } from "./store";
 import { MAX_NARRATION_SHARE, MAX_ON_SCREEN_WORDS, WORDS_PER_SECOND } from "./timing";
 
@@ -22,7 +22,9 @@ export const NOT_YET = {
 };
 
 function field(body: unknown, key: string): unknown {
-  return typeof body === "object" && body !== null ? (body as Record<string, unknown>)[key] : undefined;
+  return typeof body === "object" && body !== null
+    ? (body as Record<string, unknown>)[key]
+    : undefined;
 }
 
 function text(body: unknown, key: string): string {
@@ -96,7 +98,12 @@ export async function answerPanel(context: PanelContext, request: PanelRequest):
     }
     case "review": {
       const id = text(body, "id");
-      await store().setReview(id, text(body, "scene"), reviewStatus(field(body, "status")), notesOf(field(body, "notes")));
+      await store().setReview(
+        id,
+        text(body, "scene"),
+        reviewStatus(field(body, "status")),
+        notesOf(field(body, "notes")),
+      );
       return await video(context, id);
     }
     case "dry-run":

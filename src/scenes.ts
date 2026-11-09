@@ -141,7 +141,11 @@ export function readScenesTolerant(raw: unknown): TolerantScenes {
     if (!parsed.success) {
       problems.push({ index, id: idAt(each), message: describe(parsed.error) });
     } else if (seen.has(parsed.data.id)) {
-      problems.push({ index, id: parsed.data.id, message: "id used twice; the later one is left out" });
+      problems.push({
+        index,
+        id: parsed.data.id,
+        message: "id used twice; the later one is left out",
+      });
     } else {
       seen.add(parsed.data.id);
       scenes.push(parsed.data);

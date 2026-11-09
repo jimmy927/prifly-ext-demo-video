@@ -21,7 +21,10 @@ export const MAX_ON_SCREEN_WORDS = 15;
 
 export function countWords(text: string | undefined): number {
   if (text === undefined) return 0;
-  const words = text.trim().split(/\s+/).filter((word) => word !== "");
+  const words = text
+    .trim()
+    .split(/\s+/)
+    .filter((word) => word !== "");
   return words.length;
 }
 
@@ -114,6 +117,7 @@ export function timingLine(timing: LanguageTiming, targetSeconds: number): strin
   if (timing.headroom === "over") {
     return `${head}. Too long: the narration should fill at most 75 % of the target; cut about ${timing.cutSeconds} s.`;
   }
-  if (timing.headroom === "thin") return `${head}. Thin: under half the target; check nothing is missing.`;
+  if (timing.headroom === "thin")
+    return `${head}. Thin: under half the target; check nothing is missing.`;
   return `${head}. Fits the 25-30 % headroom.`;
 }

@@ -11,7 +11,8 @@ function launch(kind) {
 }
 
 function openSession() {
-  if (S.data.session) parent.postMessage({ type: "prifly-open-session", session: S.data.session }, "*");
+  if (S.data.session)
+    parent.postMessage({ type: "prifly-open-session", session: S.data.session }, "*");
 }
 
 /** The timing of the working copy for one language, as the host counts it. */
@@ -28,7 +29,9 @@ export function liveTiming(language) {
 function timingLine(language) {
   const t = liveTiming(language);
   const note =
-    t.state === "over" ? "too long: aim for at most 75 % of the target" : "fits the 25-30 % headroom";
+    t.state === "over"
+      ? "too long: aim for at most 75 % of the target"
+      : "fits the 25-30 % headroom";
   return el(
     "div",
     { class: t.state },
@@ -43,7 +46,8 @@ function violationLines() {
     if (count > S.config.maxOnScreenWords) {
       lines.push(`${scene.id}: ${count} words on screen; at most ${S.config.maxOnScreenWords}`);
     }
-    if (/\bODI\b/i.test(scene.onScreen)) lines.push(`${scene.id}: on-screen text says "ODI"; use "Artemis"`);
+    if (/\bODI\b/i.test(scene.onScreen))
+      lines.push(`${scene.id}: on-screen text says "ODI"; use "Artemis"`);
   }
   return lines.map((line) => el("div", { class: "over" }, line));
 }
@@ -52,7 +56,9 @@ function drawTiming(box) {
   box.replaceChildren(...S.data.brief.languages.map(timingLine), ...violationLines());
   if (S.data.problems.length > 0) {
     const bad = S.data.problems.map((p) => `scene ${p.index + 1}: ${p.message}`).join("; ");
-    box.append(el("div", { class: "over" }, `Scenes that could not be read and are left out: ${bad}`));
+    box.append(
+      el("div", { class: "over" }, `Scenes that could not be read and are left out: ${bad}`),
+    );
   }
 }
 
@@ -134,7 +140,11 @@ function sceneList(rerender) {
 }
 
 function actions(save, rerender) {
-  const write = el("button", { type: "button", class: "primary", disabled: S.briefDirty }, "Write the script");
+  const write = el(
+    "button",
+    { type: "button", class: "primary", disabled: S.briefDirty },
+    "Write the script",
+  );
   const tighten = el(
     "button",
     { type: "button", disabled: S.briefDirty || S.scriptDirty || S.work.length === 0 },
@@ -149,11 +159,23 @@ function actions(save, rerender) {
   write.addEventListener("click", () => launch("write"));
   tighten.addEventListener("click", () => launch("tighten"));
   open.addEventListener("click", openSession);
-  const saveButton = el("button", { type: "button", disabled: !S.scriptDirty || S.busy }, "Save script");
+  const saveButton = el(
+    "button",
+    { type: "button", disabled: !S.scriptDirty || S.busy },
+    "Save script",
+  );
   saveButton.id = "save-script";
   saveButton.addEventListener("click", () => save(rerender));
   const hint = S.briefDirty ? "Save the brief first: Claude reads it from disk." : "";
-  return el("div", { class: "row" }, write, tighten, open, saveButton, el("span", { class: "hint" }, hint));
+  return el(
+    "div",
+    { class: "row" },
+    write,
+    tighten,
+    open,
+    saveButton,
+    el("span", { class: "hint" }, hint),
+  );
 }
 
 async function saveScript(rerender) {
@@ -180,14 +202,23 @@ export function scriptTab(rerender) {
   if (S.work.length === 0) {
     drawTiming(timing);
     root.append(
-      el("p", { class: "muted" }, "No scenes yet. Fill in the brief, save it, then press Write the script."),
+      el(
+        "p",
+        { class: "muted" },
+        "No scenes yet. Fill in the brief, save it, then press Write the script.",
+      ),
     );
     return root;
   }
   drawTiming(timing);
   const scene = S.work[S.scene];
   root.append(
-    el("div", { class: "two" }, sceneList(rerender), editor(scene, () => drawTiming(timing), markDirty)),
+    el(
+      "div",
+      { class: "two" },
+      sceneList(rerender),
+      editor(scene, () => drawTiming(timing), markDirty),
+    ),
   );
   return root;
 }

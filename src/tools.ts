@@ -5,8 +5,8 @@
  */
 
 import type { ExtensionTool } from "@prifly/extension-api";
-import { reportText, saveScript } from "./script";
 import { type Brief, PRODUCTS } from "./scenes";
+import { reportText, saveScript } from "./script";
 import type { Store } from "./store";
 
 const VIDEO = {
@@ -42,7 +42,8 @@ export function demoTools(store: () => Store): ExtensionTool[] {
       inputSchema: objectSchema({}, []),
       call: async () => {
         const videos = await store().list();
-        if (videos.length === 0) return "No videos yet. The reader makes one with New video in the Demo studio panel.";
+        if (videos.length === 0)
+          return "No videos yet. The reader makes one with New video in the Demo studio panel.";
         return json(videos);
       },
     },
@@ -112,7 +113,8 @@ export function demoTools(store: () => Store): ExtensionTool[] {
           const notes = scene.review.notes.map((note) => `  - ${note}`).join("\n");
           return `${scene.id} (${scene.title}): ${scene.review.status}${notes === "" ? "" : `\n${notes}`}`;
         });
-        for (const each of problems) lines.push(`Unreadable scene ${each.index + 1}: ${each.message}`);
+        for (const each of problems)
+          lines.push(`Unreadable scene ${each.index + 1}: ${each.message}`);
         return lines.length === 0 ? "No scenes yet." : lines.join("\n");
       },
     },
