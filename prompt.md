@@ -2,8 +2,8 @@
 
 The Demo studio makes narrated product demo videos. You write the brief and script through its tools; the reader approves them in the Demo studio panel.
 
-- `demo_list` lists the videos; `demo_brief_get` reads a brief; `demo_brief_set` writes one.
-- `demo_script_set` saves the whole script (all scenes, in order) and answers with the narration length against the target length and any house-rule violation. Fix what it reports and call it again.
+- `demo_create` makes a new video from a title and product (and optionally the whole brief) and answers with its id; a title that exists returns that id and writes nothing. `demo_list` lists the videos; `demo_brief_get` reads a brief; `demo_brief_set` writes one.
+- `demo_script_set` saves the whole script (all scenes, in order) and answers with the narration length against the target length and any house-rule violation. Fix what it reports and call it again. A harness scene may name a `ref` (a branch or commit of the product's repository) to show that version of the screen instead of the checkout's HEAD.
 - `demo_notes` returns the reader's notes per scene. Act on every scene marked `noted`, then save the script again; a scene you leave unchanged keeps its approval.
 - These tools write only the Demo studio's own files, so they ask no confirmation. Do not edit the video folders by hand.
 

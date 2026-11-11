@@ -120,17 +120,49 @@ async function runStep(
 
 export type SceneRunDeps = {
   page: Page;
-  /** The built page of a project's harness (cached by the caller). */
-  pageOf: (project: Product) => Promise<HarnessPage>;
+  /** The built page of a scene's harness source (cached by the caller). */
+  pageOf: (source: HarnessSource) => Promise<HarnessPage>;
   /** Saves a scene's still; returns when it was taken. */
   saveStill: (sceneId: string, png: Uint8Array) => Promise<number>;
 };
+
+export type HarnessSource = Extract<Scene["source"], { kind: "harness" }>;
+
+/**
+ * The page of each (project, ref) the scenes name, built once: its targets
+ * are every target the scenes of that pair ask for, so two scenes on the same
+ * ref share one build and a scene on another ref gets its own. Without a
+ * `ref` it is the checkout's HEAD.
+ */
+export function harnessPages(
+  scenes: readonly Scene[],
+  harness: DryRunDeps["harness"],
+  say: (line: string) => void,
+): (source: HarnessSource) => Promise<HarnessPage> {
+  const key = (source: HarnessSource) => `${source.project}\n${source.ref ?? ""}`;
+  const asked = new Map<string, Set<string>>();
+  for (const scene of scenes) {
+    if (scene.source.kind !== "harness") continue;
+    const set = asked.get(key(scene.source)) ?? new Set<string>();
+    set.add(scene.source.target);
+    asked.set(key(scene.source), set);
+  }
+  const pages = new Map<string, Promise<HarnessPage>>();
+  return (source) => {
+    let found = pages.get(key(source));
+    if (found === undefined) {
+      found = harness(source.project, [...(asked.get(key(source)) ?? [])].sort(), say, source.ref);
+      pages.set(key(source), found);
+    }
+    return found;
+  };
+}
 
 /** Opens a harness scene's page and waits until it has drawn, the harness's own controls hidden. */
 export async function openScene(
   page: Page,
   built: HarnessPage,
-  source: Extract<Scene["source"], { kind: "harness" }>,
+  source: HarnessSource,
 ): Promise<void> {
   const spec = PROJECTS[source.project];
   await page.open(sceneUrl(built.file, source.target, source.state), {
@@ -159,7 +191,7 @@ export async function runScene(deps: SceneRunDeps, scene: Scene): Promise<SceneR
     return result;
   }
   try {
-    await openScene(deps.page, await deps.pageOf(source.project), source);
+    await openScene(deps.page, await deps.pageOf(source), source);
   } catch (caught) {
     result.error = caught instanceof Error ? caught.message : String(caught);
     return result;
@@ -209,6 +241,8 @@ export type DryRunDeps = {
     project: Product,
     targets: readonly string[],
     progress: (line: string) => void,
+    /** A branch or commit of the product's repository; the checkout's HEAD without it. */
+    ref?: string,
   ) => Promise<HarnessPage>;
 };
 
@@ -220,23 +254,7 @@ export async function dryRun(
   onProgress: (progress: Progress) => void = () => {},
 ): Promise<DryRunResult> {
   const total = scenes.length;
-  const asked = new Map<Product, Set<string>>();
-  for (const scene of scenes) {
-    if (scene.source.kind !== "harness") continue;
-    const set = asked.get(scene.source.project) ?? new Set<string>();
-    set.add(scene.source.target);
-    asked.set(scene.source.project, set);
-  }
-  const pages = new Map<Product, Promise<HarnessPage>>();
-  const pageOf = (project: Product) => {
-    let found = pages.get(project);
-    if (found === undefined) {
-      const line = (text: string) => onProgress({ done: 0, total, line: text });
-      found = deps.harness(project, [...(asked.get(project) ?? [])].sort(), line);
-      pages.set(project, found);
-    }
-    return found;
-  };
+  const pageOf = harnessPages(scenes, deps.harness, (line) => onProgress({ done: 0, total, line }));
   await mkdir(stillsDir, { recursive: true });
   const saveStill = async (sceneId: string, png: Uint8Array) => {
     const file = join(stillsDir, `${sceneId}.png`);

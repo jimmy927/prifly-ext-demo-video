@@ -3,8 +3,8 @@
  * mockup harness (`projects.ts`), for the dry run to open as `file://`.
  *
  * The build runs in a throwaway `git worktree` of the reader's checkout at
- * its HEAD commit, never in the checkout itself: in the video's folder
- * (`<video>/build/<project>-…`) when the checkout is on this machine's own
+ * its HEAD commit (or the commit a scene's `ref` names), never in the checkout
+ * itself: in the video's folder (`<video>/build/<project>-…`) when the checkout is on this machine's own
  * disk, and in WSL's own disk (`~/.cache/prifly-demo-video/build/…`) when
  * the host runs on Windows and the checkout is in WSL. There only the
  * composed page crosses back to the host (`buildFolder`). The checkout's
@@ -24,7 +24,7 @@ import { mkdir, rename, writeFile } from "node:fs/promises";
 import { join, posix } from "node:path";
 import { pathToFileURL } from "node:url";
 import { expandHome, failure, type RepoShell } from "../exec";
-import type { Product } from "../scenes";
+import { isGitRef, type Product } from "../scenes";
 import { composeSingleFile } from "./compose";
 import { PROJECTS, type ProjectSpec, targetsIn } from "./projects";
 
@@ -70,6 +70,43 @@ async function git(shell: RepoShell, repo: string, args: readonly string[]): Pro
   return ran.out;
 }
 
+/**
+ * The commit a scene's page is built from: the checkout's HEAD without a
+ * `ref`, else the branch or commit it names. A local one wins; otherwise just
+ * that ref is fetched from origin and `origin/<ref>` (or what was fetched) is
+ * used. A ref nothing knows is a one-line error naming it.
+ */
+export async function resolveCommit(
+  shell: RepoShell,
+  repo: string,
+  project: Product,
+  ref: string | undefined,
+): Promise<string> {
+  if (ref === undefined) return (await git(shell, repo, ["rev-parse", "HEAD"])).trim();
+  const unknown = new Error(`Unknown git ref "${ref}" in ${project}'s checkout`);
+  // Checked again here: a script edited by hand is read tolerantly, and git must not see `-x` as an option.
+  if (!isGitRef(ref)) throw unknown;
+  const verify = async (name: string): Promise<string | null> => {
+    const ran = await shell.run([
+      "git",
+      "-C",
+      repo,
+      "rev-parse",
+      "--verify",
+      "--quiet",
+      `${name}^{commit}`,
+    ]);
+    return ran.code === 0 && ran.out.trim() !== "" ? ran.out.trim() : null;
+  };
+  const local = await verify(ref);
+  if (local !== null) return local;
+  const fetched = await shell.run(["git", "-C", repo, "fetch", "origin", ref]);
+  if (fetched.code !== 0) throw unknown;
+  const remote = (await verify(`origin/${ref}`)) ?? (await verify("FETCH_HEAD"));
+  if (remote === null) throw unknown;
+  return remote;
+}
+
 /** The cache's name for a page: project, commit and which targets it holds. */
 export function cacheName(project: Product, commit: string, targets: readonly string[]): string {
   const hash = createHash("sha256").update(targets.join("\n")).digest("hex").slice(0, 10);
@@ -103,12 +140,13 @@ export async function harnessPage(
   project: Product,
   asked: readonly string[],
   videoFolder: string,
+  ref?: string,
 ): Promise<HarnessPage> {
   const spec = PROJECTS[project];
   const { shell } = deps;
   const say = deps.progress ?? (() => {});
   const repo = expandHome(deps.checkouts[project] ?? spec.defaultCheckout, await shell.home());
-  const commit = (await git(shell, repo, ["rev-parse", "HEAD"])).trim();
+  const commit = await resolveCommit(shell, repo, project, ref);
   const available =
     spec.targetsDir === null
       ? [...spec.fixedTargets]

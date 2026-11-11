@@ -14,13 +14,12 @@
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { browserBusy, type LaunchBrowser, withBrowser } from "./browser";
-import { type DryRunDeps, openScene } from "./dry-run";
+import { type DryRunDeps, harnessPages, openScene } from "./dry-run";
 import { type Exec, failure } from "./exec";
 import { durationMs, type Encoder, type Tools } from "./ffmpeg";
 import { type RenderPlan, type RenderScene, renderPlan } from "./render";
 import type { Progress } from "./runs";
-import type { Language, Product, Scene } from "./scenes";
-import type { HarnessPage } from "./sources/harness";
+import type { Language, Scene } from "./scenes";
 import { holdMs, readTake, recordScene, type Take, takeKey } from "./take";
 import { type Synth, type VoiceChoice, type Voiced, voiceAll } from "./voice";
 
@@ -101,26 +100,12 @@ async function takeScenes(
   holds: ReadonlyMap<string, number>,
   say: (line: string, done: number) => void,
 ): Promise<void> {
-  const pages = new Map<Product, Promise<HarnessPage>>();
-  const targets = new Map<Product, Set<string>>();
   for (const scene of scenes) {
     if (scene.source.kind !== "harness") {
       throw new Error(`Scene ${scene.id} has a live source; live sources come in a later version`);
     }
-    const set = targets.get(scene.source.project) ?? new Set<string>();
-    set.add(scene.source.target);
-    targets.set(scene.source.project, set);
   }
-  const pageOf = (project: Product) => {
-    let found = pages.get(project);
-    if (found === undefined) {
-      found = deps.harness(project, [...(targets.get(project) ?? [])].sort(), (line) =>
-        say(line, 0),
-      );
-      pages.set(project, found);
-    }
-    return found;
-  };
+  const pageOf = harnessPages(scenes, deps.harness, (line) => say(line, 0));
   if (browserBusy()) say("Waiting for the browser: a dry run is using it", 0);
   await withBrowser(deps.launch, async (page) => {
     for (const [index, scene] of scenes.entries()) {
@@ -131,7 +116,7 @@ async function takeScenes(
           now: deps.now,
           open: async (each) => {
             if (each.source.kind !== "harness") throw new Error("not a harness scene");
-            await openScene(page, await pageOf(each.source.project), each.source);
+            await openScene(page, await pageOf(each.source), each.source);
           },
         },
         scene,

@@ -81,8 +81,8 @@ function realDeps(videoFolder: string): DryRunDeps {
   const cacheDir = join(currentStore().root, "_harness-cache");
   return {
     launch: launchShell,
-    harness: (project, targets, progress) =>
-      harnessPage({ shell, checkouts, cacheDir, progress }, project, targets, videoFolder),
+    harness: (project, targets, progress, ref) =>
+      harnessPage({ shell, checkouts, cacheDir, progress }, project, targets, videoFolder, ref),
   };
 }
 

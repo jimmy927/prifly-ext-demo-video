@@ -72,6 +72,29 @@ test("tolerant on read: nothing, or garbage, never throws", () => {
   expect(readScenesTolerant([scene()]).scenes).toHaveLength(1);
 });
 
+test("a harness source's ref: strict on write, tolerant on read", () => {
+  const source = (ref: unknown) => ({
+    kind: "harness",
+    project: "odi",
+    target: "rn-ashby-grading",
+    ref,
+  });
+  for (const good of ["odi-ashby-grading-mockup-target", "feature/x_1.2", "bbaa2103b"]) {
+    const parsed = parseScenesStrict([scene({ source: source(good) })]);
+    expect(parsed.ok).toBe(true);
+    if (parsed.ok) expect(parsed.scenes[0]?.source).toMatchObject({ ref: good });
+  }
+  for (const bad of ["", "-x", "a b", "a..b", "a//b", "a/", "a.lock", "a~1", "a:b", "x\n", 3]) {
+    expect(parseScenesStrict([scene({ source: source(bad) })]).ok).toBe(false);
+  }
+  // Without a ref the source is as it was.
+  expect(parseScenesStrict([scene()]).ok).toBe(true);
+  // A hand-edited ref is kept on read; the build refuses it.
+  const read = readScenesTolerant([scene({ source: source("-odd") })]);
+  expect(read.problems).toEqual([]);
+  expect(read.scenes[0]?.source).toMatchObject({ ref: "-odd" });
+});
+
 test("the brief: strict on write, tolerant on read", () => {
   const brief = emptyBrief("Hero", "odi");
   expect(parseBriefStrict(brief).ok).toBe(true);

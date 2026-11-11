@@ -10,10 +10,74 @@ async function newVideo(s: ReturnType<typeof studio>, title = "Hero video") {
 
 const words = (n: number) => Array.from({ length: n }, () => "word").join(" ");
 
-test("activate registers the seven tools, none of which asks the reader", async () => {
+test("demo_create makes a video that demo_list and the panel show, with its brief in the same call", async () => {
+  const s = studio();
+  const made = await s.fake.callTool("demo_create", { title: "Ashby grading", product: "odi" });
+  const id = /Video (\S+) made/.exec(made)?.[1] as string;
+  expect(JSON.parse(await s.fake.callTool("demo_list", {}))).toMatchObject([
+    { id, title: "Ashby grading", product: "odi" },
+  ]);
+  expect((await s.ask("videos", null)).videos).toMatchObject([{ id }]);
+  const brief = {
+    title: "Grade in Ashby",
+    product: "odi",
+    pain: "Slow grading",
+    languages: ["en"],
+  };
+  const second = await s.fake.callTool("demo_create", {
+    title: "Grade in Ashby",
+    product: "odi",
+    brief,
+  });
+  const secondId = /Video (\S+) made, brief saved/.exec(second)?.[1] as string;
+  expect(JSON.parse(await s.fake.callTool("demo_brief_get", { video: secondId }))).toMatchObject(
+    brief,
+  );
+  expect(s.fake.confirms).toEqual([]);
+});
+
+test("demo_create with a title that exists returns the same id and leaves its brief alone", async () => {
+  const s = studio();
+  const first = await s.fake.callTool("demo_create", {
+    title: "Hero video",
+    product: "odi",
+    brief: { title: "Hero video", product: "odi", pain: "Kept" },
+  });
+  const id = /Video (\S+) made/.exec(first)?.[1] as string;
+  const again = await s.fake.callTool("demo_create", {
+    title: "  hero VIDEO ",
+    product: "prifly",
+    brief: { title: "Hero video", product: "odi", pain: "Overwritten?" },
+  });
+  expect(again).toContain("already exists");
+  expect(again).toContain(id);
+  expect(again).toContain("demo_brief_set");
+  expect(JSON.parse(await s.fake.callTool("demo_list", {}))).toHaveLength(1);
+  expect(JSON.parse(await s.fake.callTool("demo_brief_get", { video: id })).pain).toBe("Kept");
+});
+
+test("demo_create refuses a missing title or an unknown product, and keeps the video when its brief does not fit", async () => {
+  const s = studio();
+  await expect(s.fake.callTool("demo_create", { title: " ", product: "odi" })).rejects.toThrow(
+    "title is required",
+  );
+  await expect(s.fake.callTool("demo_create", { title: "x", product: "other" })).rejects.toThrow(
+    "product must be odi or prifly",
+  );
+  const bad = await s.fake.callTool("demo_create", {
+    title: "Half",
+    product: "odi",
+    brief: { title: "Half", product: "odi", nonsense: 1 },
+  });
+  expect(bad).toContain("brief was not written");
+  expect(JSON.parse(await s.fake.callTool("demo_list", {}))).toHaveLength(1);
+});
+
+test("activate registers the eight tools, none of which asks the reader", async () => {
   const s = studio();
   expect(s.fake.tools().map((tool) => tool.name)).toEqual([
     "demo_list",
+    "demo_create",
     "demo_brief_get",
     "demo_brief_set",
     "demo_script_set",

@@ -220,6 +220,45 @@ test("a dry run builds each project's page once, writes the stills and its resul
   expect(progress).toContain("Scene 2 of 3: Scene two");
 });
 
+test("scenes on different refs of one project each get their own page; the same ref builds once", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "dry-run-"));
+  const asked: { targets: string[]; ref: string | undefined }[] = [];
+  const page = fakePage({});
+  const at = (target: string, ref?: string) => ({
+    kind: "harness",
+    project: "odi",
+    target,
+    ...(ref === undefined ? {} : { ref }),
+  });
+  const result = await dryRun(
+    {
+      launch: fakeLauncher(page),
+      harness: async (_project, targets, _progress, ref) => {
+        asked.push({ targets: [...targets], ref });
+        return { ...PAGE, file: `/tmp/odi-${ref ?? "head"}.html` };
+      },
+    },
+    [
+      scene("a", [], at("t-one")),
+      scene("b", [], at("t-two", "feature")),
+      scene("c", [], at("t-three", "feature")),
+      scene("d", [], at("t-four")),
+    ],
+    join(dir, "stills"),
+  );
+  expect(result.ok).toBe(true);
+  expect(asked).toEqual([
+    { targets: ["t-four", "t-one"], ref: undefined },
+    { targets: ["t-three", "t-two"], ref: "feature" },
+  ]);
+  expect(page.opened.map(({ url }) => url.split("?")[0])).toEqual([
+    "file:///tmp/odi-head.html",
+    "file:///tmp/odi-feature.html",
+    "file:///tmp/odi-feature.html",
+    "file:///tmp/odi-head.html",
+  ]);
+});
+
 test("the browser is closed when a step throws, and the lock lets the next one in", async () => {
   const page = fakePage({});
   const launch = fakeLauncher(page);

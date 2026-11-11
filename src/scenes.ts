@@ -17,6 +17,23 @@ export type Product = (typeof PRODUCTS)[number];
 
 const selector = z.string().min(1);
 
+/**
+ * Whether a string can safely name a branch or commit: no leading `-` (it
+ * would pass for an option), no spaces or git's forbidden characters, no
+ * `..`, `//`, `@{`, `/.` or trailing `/`, `.` or `.lock`.
+ */
+export function isGitRef(ref: string): boolean {
+  return (
+    /^[A-Za-z0-9_][A-Za-z0-9._/+@-]*$/.test(ref) &&
+    !/\.\.|\/\/|@\{|\/\.|[/.]$|\.lock(\/|$)/.test(ref)
+  );
+}
+
+const gitRef = z
+  .string()
+  .min(1)
+  .refine(isGitRef, "a branch name or commit sha, without spaces, a leading - or ..");
+
 export const REVIEW_STATUSES = ["pending", "approved", "noted"] as const;
 export type ReviewStatus = (typeof REVIEW_STATUSES)[number];
 
@@ -46,6 +63,8 @@ function sceneSchema(strict: boolean) {
       project: z.enum(PRODUCTS),
       target: z.string().min(1),
       state: z.string().min(1).optional(),
+      /** A branch or commit of the product's repository; the checkout's HEAD without it. */
+      ref: (strict ? gitRef : z.string().min(1)).optional(),
     }),
     obj({ kind: z.literal("live"), url: z.string().url() }),
   ]);
