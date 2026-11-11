@@ -48,14 +48,22 @@ async function createVideo(store: Store, args: Record<string, unknown>): Promise
   if (typeof title !== "string" || title.trim() === "") throw new Error("title is required");
   const product = PRODUCTS.find((each) => each === args["product"]);
   if (product === undefined) throw new Error("product must be odi or prifly");
-  const wanted = title.trim().toLowerCase();
-  const existing = (await store.list()).find((each) => each.title.trim().toLowerCase() === wanted);
+  // A brief's own title replaces the video's title, so it counts as the name asked for too.
+  const briefTitle = (args["brief"] as { title?: unknown } | null | undefined)?.title;
+  const names = [title, briefTitle]
+    .filter((each): each is string => typeof each === "string")
+    .map((each) => each.trim().toLowerCase());
+  const existing = (await store.list()).find((each) =>
+    names.includes(each.title.trim().toLowerCase()),
+  );
   if (existing !== undefined) {
+    const other =
+      existing.product === product ? "" : ` It is a ${existing.product} video, not ${product}.`;
     const skipped =
       args["brief"] === undefined
         ? ""
         : " The brief you passed was not written; use demo_brief_set to change it.";
-    return `A video titled "${existing.title}" already exists: ${existing.id}. No second one was made.${skipped}`;
+    return `A video titled "${existing.title}" already exists: ${existing.id}. No second one was made.${other}${skipped}`;
   }
   const created = await store.create(title, product);
   if (args["brief"] === undefined) return `Video ${created.id} made.`;

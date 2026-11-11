@@ -52,6 +52,14 @@ test("demo_create with a title that exists returns the same id and leaves its br
   expect(again).toContain("already exists");
   expect(again).toContain(id);
   expect(again).toContain("demo_brief_set");
+  expect(again).toContain("odi video, not prifly");
+  // A brief whose own title names an existing video would make a second one of that title.
+  const viaBrief = await s.fake.callTool("demo_create", {
+    title: "Another",
+    product: "odi",
+    brief: { title: "HERO video", product: "odi" },
+  });
+  expect(viaBrief).toContain(`already exists: ${id}`);
   expect(JSON.parse(await s.fake.callTool("demo_list", {}))).toHaveLength(1);
   expect(JSON.parse(await s.fake.callTool("demo_brief_get", { video: id })).pain).toBe("Kept");
 });

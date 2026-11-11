@@ -55,9 +55,11 @@ test("a ref nothing knows fails with one line naming it, and builds nothing", as
   );
   expect(gitCalls(commands, "worktree")).toEqual([]);
   // A ref git could take for an option is refused before git sees it.
+  const before = commands.length;
   await expect(harnessPage(deps, "odi", [], video, "--all")).rejects.toThrow(
     `Unknown git ref "--all"`,
   );
+  expect(commands.slice(before).filter((each) => each.argv.includes("--all"))).toEqual([]);
 });
 
 test("without a ref the build is at the checkout's HEAD, as before", async () => {
