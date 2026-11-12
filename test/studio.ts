@@ -24,7 +24,16 @@ export function studio(options: { features?: string[]; noState?: boolean } = {})
     const request: PanelRequest = { path, query, body };
     return extension.panel("studio", request) as Promise<Json>;
   };
-  return { fake, dir, ask };
+  /** The session view's `api/state`, as the host passes it: the params `showSessionView` gave. */
+  const askView = (params: Record<string, string> = {}, query: Record<string, string> = {}) =>
+    extension.panel("timeline", {
+      path: "state",
+      query,
+      body: null,
+      sessionId: "fake-session",
+      params,
+    } as PanelRequest) as Promise<Json>;
+  return { fake, dir, ask, askView };
 }
 
 export const SCENE = {

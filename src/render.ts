@@ -199,30 +199,72 @@ const srtTime = (ms: number) => {
   return `${pad(h)}:${pad(m)}:${pad(s)},${pad(whole % 1000, 3)}`;
 };
 
+export type Cue = { startMs: number; endMs: number; text: string };
+
 /**
  * A scene's subtitles, on the scene's own clock: from the lead-in, over the
  * narration's length, each chunk for its share of the words.
  */
+export function sceneCues(
+  text: string,
+  narrationMs: number | null,
+  language: Language,
+  durationMs: number,
+): Cue[] {
+  const chunks = subtitleChunks(text);
+  if (chunks.length === 0) return [];
+  const spoken = narrationMs ?? (countWords(text) / WORDS_PER_SECOND[language]) * 1000;
+  const total = chunks.reduce((sum, chunk) => sum + countWords(chunk), 0);
+  const end = Math.min(durationMs, LEAD_MS + spoken);
+  let at = LEAD_MS;
+  return chunks.map((chunk, index) => {
+    const share = ((end - LEAD_MS) * countWords(chunk)) / total;
+    const from = at;
+    at = index === chunks.length - 1 ? end : at + share;
+    return { startMs: from, endMs: at, text: chunk };
+  });
+}
+
+/** The cues as an SRT file; "" for none. */
 export function sceneSrt(
   text: string,
   narrationMs: number | null,
   language: Language,
   durationMs: number,
 ): string {
-  const chunks = subtitleChunks(text);
-  if (chunks.length === 0) return "";
-  const spoken = narrationMs ?? (countWords(text) / WORDS_PER_SECOND[language]) * 1000;
-  const total = chunks.reduce((sum, chunk) => sum + countWords(chunk), 0);
-  const end = Math.min(durationMs, LEAD_MS + spoken);
-  let at = LEAD_MS;
-  return chunks
-    .map((chunk, index) => {
-      const share = ((end - LEAD_MS) * countWords(chunk)) / total;
-      const from = at;
-      at = index === chunks.length - 1 ? end : at + share;
-      return `${index + 1}\n${srtTime(from)} --> ${srtTime(at)}\n${chunk}\n`;
-    })
+  return sceneCues(text, narrationMs, language, durationMs)
+    .map(
+      (cue, index) =>
+        `${index + 1}\n${srtTime(cue.startMs)} --> ${srtTime(cue.endMs)}\n${cue.text}\n`,
+    )
     .join("\n");
+}
+
+/** Pixels of a waveform picture per second of narration, within these bounds. */
+const WAVE_PX_PER_SECOND = 50;
+const WAVE_HEIGHT = 48;
+
+/**
+ * The ffmpeg line for one narration's waveform picture: white on a
+ * transparent ground, so the viewer page tints it with its own colour.
+ */
+export function waveformArgv(
+  ffmpeg: string,
+  audio: { file: string; ms: number },
+  output: string,
+): string[] {
+  const width = Math.min(4000, Math.max(40, Math.round((audio.ms / 1000) * WAVE_PX_PER_SECOND)));
+  return [
+    ffmpeg,
+    ...QUIET,
+    "-i",
+    audio.file,
+    "-filter_complex",
+    `showwavespic=s=${width}x${WAVE_HEIGHT}:colors=white,format=rgba,colorkey=black:0.3:0.2`,
+    "-frames:v",
+    "1",
+    output,
+  ];
 }
 
 /** How the subtitles look: white on a dark box, near the bottom (libass sizes are of a 288-line frame). */

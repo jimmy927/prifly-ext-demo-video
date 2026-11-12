@@ -11,6 +11,7 @@ import { type DryRunService, dryRunText } from "./dry-run-service";
 import { type RenderService, renderText } from "./render-service";
 import { type Brief, PRODUCTS } from "./scenes";
 import { reportText, saveScript } from "./script";
+import type { SessionViews } from "./session-views";
 import type { Store } from "./store";
 
 const VIDEO = {
@@ -43,7 +44,10 @@ function videoArg(args: Record<string, unknown>): string {
 }
 
 /** demo_create: a new video, or the existing one of that title (its brief then left as it is). */
-async function createVideo(store: Store, args: Record<string, unknown>): Promise<string> {
+async function createVideo(
+  store: Store,
+  args: Record<string, unknown>,
+): Promise<{ text: string; id: string }> {
   const title = args["title"];
   if (typeof title !== "string" || title.trim() === "") throw new Error("title is required");
   const product = PRODUCTS.find((each) => each === args["product"]);
@@ -63,18 +67,24 @@ async function createVideo(store: Store, args: Record<string, unknown>): Promise
       args["brief"] === undefined
         ? ""
         : " The brief you passed was not written; use demo_brief_set to change it.";
-    return `A video titled "${existing.title}" already exists: ${existing.id}. No second one was made.${other}${skipped}`;
+    return {
+      id: existing.id,
+      text: `A video titled "${existing.title}" already exists: ${existing.id}. No second one was made.${other}${skipped}`,
+    };
   }
   const created = await store.create(title, product);
-  if (args["brief"] === undefined) return `Video ${created.id} made.`;
+  if (args["brief"] === undefined) return { id: created.id, text: `Video ${created.id} made.` };
   try {
     await store.writeBrief(created.id, args["brief"]);
   } catch (caught) {
     // The empty video stays, so the caller fixes the brief rather than creating twice.
     const why = caught instanceof Error ? caught.message : String(caught);
-    return `Video ${created.id} made, but its brief was not written: ${why}\nFix it and call demo_brief_set.`;
+    return {
+      id: created.id,
+      text: `Video ${created.id} made, but its brief was not written: ${why}\nFix it and call demo_brief_set.`,
+    };
   }
-  return `Video ${created.id} made, brief saved.`;
+  return { id: created.id, text: `Video ${created.id} made, brief saved.` };
 }
 
 function objectSchema(
@@ -90,10 +100,14 @@ function briefLines(brief: Brief): string {
   return json(brief);
 }
 
+/** The tool's answer, then the line about the timeline beside the chat when there is one. */
+const withNote = (text: string, note: string): string => (note === "" ? text : `${text}\n${note}`);
+
 export function demoTools(
   store: () => Store,
   dryRun: () => DryRunService,
   render: () => RenderService,
+  views: () => SessionViews,
 ): ExtensionTool[] {
   return [
     {
@@ -123,7 +137,10 @@ export function demoTools(
         },
         ["title", "product"],
       ),
-      call: async (args) => await createVideo(store(), args),
+      call: async (args, ctx) => {
+        const made = await createVideo(store(), args);
+        return withNote(made.text, views().ensure(ctx.session, made.id));
+      },
     },
     {
       name: "demo_brief_get",
@@ -163,7 +180,11 @@ export function demoTools(
         },
         ["video", "scenes"],
       ),
-      call: async (args) => reportText(await saveScript(store(), videoArg(args), args["scenes"])),
+      call: async (args, ctx) => {
+        const video = videoArg(args);
+        const report = reportText(await saveScript(store(), video, args["scenes"]));
+        return withNote(report, views().ensure(ctx.session, video));
+      },
     },
     {
       name: "demo_notes",
@@ -184,7 +205,7 @@ export function demoTools(
     {
       name: "demo_render",
       description:
-        "Renders a video to <video>/out/<lang>.mp4 at 1920x1080 for each language in its brief: voices every scene (cached by text and voice), records each scene in Demo studio's own headless browser, zooms toward each click, burns in subtitles, joins the scenes and mixes in the narration. redo 'all' (default) records every scene again; redo 'noted' records only the scenes the reader left notes on. Always uses the Edge draft voices: Final voice (ElevenLabs, which spends the reader's characters) is the reader's own checkbox on the Video tab. Waits until it ends; only one render runs at a time. Changes only the video's own audio, takes and out folders.",
+        "Renders a video to <video>/out/<lang>.mp4 at 1920x1080 for each language in its brief, and keeps it as the next version (out/v<N>/, with what changed since the version before; the viewer lists it): voices every scene (cached by text and voice), records each scene in Demo studio's own headless browser, zooms toward each click, burns in subtitles, joins the scenes and mixes in the narration. redo 'all' (default) records every scene again; redo 'noted' records only the scenes the reader left notes on. Always uses the Edge draft voices: Final voice (ElevenLabs, which spends the reader's characters) is the reader's own checkbox on the Video tab. Waits until it ends; only one render runs at a time. Changes only the video's own audio, takes and out folders.",
       inputSchema: objectSchema(
         {
           video: VIDEO,
@@ -192,20 +213,42 @@ export function demoTools(
         },
         ["video"],
       ),
-      call: async (args) =>
-        renderText(
-          await render().runAndWait(videoArg(args), {
+      call: async (args, ctx) => {
+        const video = videoArg(args);
+        await store().entry(video);
+        // Before the wait, so the viewer shows "Rendering…" while it runs.
+        const note = views().ensure(ctx.session, video);
+        const answer = renderText(
+          await render().runAndWait(video, {
             redo: args["redo"] === "noted" ? "noted" : "all",
             final: false,
           }),
-        ),
+        );
+        return withNote(answer, note);
+      },
     },
     {
       name: "demo_dry_run",
       description:
         "Dry-runs a video's script: opens every scene's harness page (built from the product's own mockup harness at its checkout's HEAD commit, or at the scene's ref, in a throwaway worktree) in Demo studio's own headless browser, performs each step (click, hover, type, scroll, wait-for; zoom-hint only records its target), checks every target exists, is visible and that each click lands on it, and takes one still per scene for the Storyboard. Answers with one line, '5 of 5 scenes, every click landed', or the scene, step and selector that failed, then each scene. Waits until it ends (a first build takes about half a minute); only one dry run runs at a time. Changes only the video's own stills.",
       inputSchema: objectSchema({ video: VIDEO }, ["video"]),
-      call: async (args) => dryRunText(await dryRun().runAndWait(videoArg(args))),
+      call: async (args, ctx) => {
+        const video = videoArg(args);
+        await store().entry(video);
+        const note = views().ensure(ctx.session, video);
+        return withNote(dryRunText(await dryRun().runAndWait(video)), note);
+      },
+    },
+    {
+      name: "demo_open",
+      description:
+        "Opens a video's viewer beside the chat, in the session's App tab: the player, the timeline (scenes with their stills, voice waveforms, captions, zoom markers), what changed in each version, and the versions. Read-only. When the reader clicks a moment on the timeline, a line like '@0:09 scene 2 (Connect with one key)' lands in the message box: it points at that moment of the version shown. Open it first in a creative session; demo_create, demo_script_set, demo_dry_run and demo_render open it too when the session has none yet. Runs at once.",
+      inputSchema: objectSchema({ video: VIDEO }, ["video"]),
+      call: async (args, ctx) => {
+        const video = videoArg(args);
+        const { title } = await store().entry(video);
+        return `Video ${video} (${title}). ${views().open(ctx.session, video)}`;
+      },
     },
   ];
 }

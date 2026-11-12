@@ -22,4 +22,4 @@ Render (the Video tab, "Approve and render", or the `demo_render` tool) voices e
     bun node_modules/typescript/bin/tsc --noEmit   # or: bun run typecheck where node is recent
     bun node_modules/@biomejs/biome/bin/biome check .
 
-Videos live in the extension's data folder, one folder per video (`brief.json`, `scenes.json`, `stills/`, `audio/`, `takes/`, `out/`).
+Videos live in the extension's data folder, one folder per video (`brief.json`, `scenes.json`, `stills/`, `audio/`, `takes/`, `out/`). Each render also becomes a version, `out/v<N>/` (the MP4s, a waveform picture per scene, a `scenes.json` snapshot and `changes.json`; `out/latest.json` names the newest, the last ten stay), which the Demo studio session view (`demo_open`, in the session's App tab) shows as a timeline.

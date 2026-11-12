@@ -222,6 +222,8 @@ export type FakeApi = {
     name: string,
     args: Record<string, unknown>,
     pick?: ExtensionPickAnswer,
+    /** The calling session; default "fake-session". */
+    session?: string,
   ) => Promise<string>;
   shown: { bySession: Record<string, Decoration[]>; statusBar: Decoration[] }[];
   flags: Map<string, LauncherFlag | null>;
@@ -325,11 +327,16 @@ export function fakeApi(
     },
     dialog: async () => null,
   } as ExtensionApi;
-  const callTool: FakeApi["callTool"] = async (name, args, pick = null) => {
+  const callTool: FakeApi["callTool"] = async (
+    name,
+    args,
+    pick = null,
+    session = "fake-session",
+  ) => {
     const tool = tools.find((each) => each.name === name);
     if (tool === undefined) throw new Error(`No tool ${name} registered`);
     const ctx: ExtensionToolContext = {
-      session: "fake-session",
+      session,
       pick: async () => pick,
       signal: new AbortController().signal,
       // Made on first read, as prifly makes the session's: one folder per fake api.

@@ -1,0 +1,137 @@
+{
+  "etag": "fixture0000000001",
+  "unknown": false,
+  "video": { "id": "ashby-integration", "title": "Ashby integration" },
+  "languages": ["sv", "en"],
+  "media": true,
+  "rendering": false,
+  "renderLine": null,
+  "renderError": null,
+  "scenes": [
+    {
+      "id": "pain",
+      "title": "Hiring takes weeks",
+      "still": "media/ashby-integration/stills/pain.png?v=1",
+      "narration": { "en": "Hiring takes weeks." }
+    },
+    {
+      "id": "connect",
+      "title": "Connect with one key",
+      "still": "media/ashby-integration/stills/connect.png?v=1",
+      "narration": { "en": "Paste one key." }
+    },
+    {
+      "id": "grade",
+      "title": "Grades land in Ashby",
+      "still": null,
+      "narration": { "en": "Grades flow back." }
+    }
+  ],
+  "latest": 2,
+  "versions": [
+    {
+      "version": 2,
+      "at": 1789200000000,
+      "durationMs": 21000,
+      "first": false,
+      "changes": [
+        "Scene 2 (Connect with one key): minimum hold 1500 ms to 4000 ms",
+        "Scene 3 (Grades land in Ashby) added"
+      ],
+      "files": {
+        "sv": "media/ashby-integration/out/v2/sv.mp4?v=1789200000000",
+        "en": "media/ashby-integration/out/v2/en.mp4?v=1789200000000"
+      },
+      "scenes": [
+        {
+          "id": "pain",
+          "title": "Hiring takes weeks",
+          "startMs": 0,
+          "durationMs": 6000,
+          "zooms": [2500],
+          "voice": {
+            "sv": {
+              "wave": "media/ashby-integration/out/v2/wave/sv/pain.png?v=1789200000000",
+              "offsetMs": 300,
+              "ms": 4200
+            },
+            "en": {
+              "wave": "media/ashby-integration/out/v2/wave/en/pain.png?v=1789200000000",
+              "offsetMs": 300,
+              "ms": 3800
+            }
+          },
+          "captions": {
+            "sv": [{ "startMs": 300, "endMs": 4500, "text": "Det tar veckor att anställa." }],
+            "en": [{ "startMs": 300, "endMs": 4100, "text": "Hiring takes weeks." }]
+          }
+        },
+        {
+          "id": "connect",
+          "title": "Connect with one key",
+          "startMs": 6000,
+          "durationMs": 9000,
+          "zooms": [1500, 5200],
+          "voice": {
+            "sv": { "wave": null, "offsetMs": 300, "ms": 6000 },
+            "en": {
+              "wave": "media/ashby-integration/out/v2/wave/en/connect.png?v=1789200000000",
+              "offsetMs": 300,
+              "ms": 5600
+            }
+          },
+          "captions": {
+            "sv": [{ "startMs": 300, "endMs": 6300, "text": "Klistra in en nyckel." }],
+            "en": [
+              { "startMs": 300, "endMs": 3100, "text": "Paste one key from Ashby" },
+              { "startMs": 3100, "endMs": 5900, "text": "and you are connected." }
+            ]
+          }
+        },
+        {
+          "id": "grade",
+          "title": "Grades land in Ashby",
+          "startMs": 15000,
+          "durationMs": 6000,
+          "zooms": [],
+          "voice": {
+            "en": {
+              "wave": "media/ashby-integration/out/v2/wave/en/grade.png?v=1789200000000",
+              "offsetMs": 300,
+              "ms": 4000
+            }
+          },
+          "captions": { "en": [{ "startMs": 300, "endMs": 4300, "text": "Grades flow back." }] }
+        }
+      ]
+    },
+    {
+      "version": 1,
+      "at": 1789196400000,
+      "durationMs": 15000,
+      "first": true,
+      "changes": ["First version"],
+      "files": { "en": "media/ashby-integration/out/v1/en.mp4?v=1789196400000" },
+      "scenes": [
+        {
+          "id": "pain",
+          "title": "Hiring takes weeks",
+          "startMs": 0,
+          "durationMs": 6000,
+          "zooms": [2500],
+          "voice": {},
+          "captions": {}
+        },
+        {
+          "id": "connect",
+          "title": "Connect with one key",
+          "startMs": 6000,
+          "durationMs": 9000,
+          "zooms": [],
+          "voice": {},
+          "captions": {}
+        }
+      ]
+    }
+  ]
+}

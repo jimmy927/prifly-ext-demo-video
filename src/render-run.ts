@@ -17,10 +17,17 @@ import { browserBusy, type LaunchBrowser, withBrowser } from "./browser";
 import { type DryRunDeps, harnessPages, openScene } from "./dry-run";
 import { type Exec, failure } from "./exec";
 import { durationMs, type Encoder, type Tools } from "./ffmpeg";
-import { type RenderPlan, type RenderScene, renderPlan } from "./render";
+import {
+  type Cue,
+  type RenderPlan,
+  type RenderScene,
+  renderPlan,
+  sceneCues,
+  waveformArgv,
+} from "./render";
 import type { Progress } from "./runs";
 import type { Language, Scene } from "./scenes";
-import { holdMs, readTake, recordScene, type Take, takeKey } from "./take";
+import { holdMs, LEAD_MS, readTake, recordScene, type Take, takeKey } from "./take";
 import { type Synth, type VoiceChoice, type Voiced, voiceAll } from "./voice";
 
 export type RenderDeps = {
@@ -40,6 +47,18 @@ export type RenderOptions = {
   redo: "all" | "noted";
   choiceOf: (language: Language) => VoiceChoice;
   final: boolean;
+  /** The version this render becomes: its waveform pictures go into `out/v<version>/`. */
+  version?: number;
+};
+
+/** What the viewer page draws on one scene's block of the timeline, besides its still. */
+export type SceneMoments = {
+  id: string;
+  /** Click and zoom moments, in ms from the scene's start. */
+  zooms: number[];
+  /** Per language: the narration's picture (relative to the video folder), where it starts and its length. */
+  voice: Partial<Record<Language, { wave: string | null; offsetMs: number; ms: number }>>;
+  captions: Partial<Record<Language, Cue[]>>;
 };
 
 export type RenderOutput = { language: Language; file: string; durationMs: number };
@@ -55,6 +74,9 @@ export type RenderResult = {
   /** The scenes taken again in this render, and those whose take was kept. */
   retaken: string[];
   kept: string[];
+  /** The version this render became; null for one made without versions. */
+  version: number | null;
+  scenes: SceneMoments[];
 };
 
 const RESULT = "render.json";
@@ -174,6 +196,52 @@ async function renderLanguage(
   await rename(partial, join(folder, ...plan.final.output.split("/")));
 }
 
+/** Per scene: its zoom moments, captions and, with a version, a waveform picture of each narration. */
+async function momentsOf(
+  deps: RenderDeps,
+  folder: string,
+  ffmpeg: string,
+  scenes: readonly Scene[],
+  takes: ReadonlyMap<string, Take>,
+  voiced: Voiced,
+  options: RenderOptions,
+): Promise<SceneMoments[]> {
+  const moments: SceneMoments[] = [];
+  for (const scene of scenes) {
+    const take = takes.get(scene.id) as Take;
+    const moment: SceneMoments = {
+      id: scene.id,
+      zooms: take.events.filter((each) => each.kind !== "hover").map((each) => each.t),
+      voice: {},
+      captions: {},
+    };
+    for (const language of options.languages) {
+      const said = voiced[scene.id]?.[language];
+      moment.captions[language] = sceneCues(
+        scene.narration[language] ?? "",
+        said?.ms ?? null,
+        language,
+        take.durationMs,
+      );
+      if (said === undefined) continue;
+      let wave: string | null = null;
+      if (options.version !== undefined) {
+        wave = `out/v${options.version}/wave/${language}/${scene.id}.png`;
+        await mkdir(dirname(join(folder, ...wave.split("/"))), { recursive: true });
+        await run(
+          deps,
+          folder,
+          waveformArgv(ffmpeg, { file: `audio/${language}/${scene.id}.mp3`, ms: said.ms }, wave),
+          `Drawing the ${language} waveform of ${scene.id}`,
+        );
+      }
+      moment.voice[language] = { wave, offsetMs: LEAD_MS, ms: said.ms };
+    }
+    moments.push(moment);
+  }
+  return moments;
+}
+
 /** The render of one video: voice, takes, then every language's MP4. */
 export async function renderVideo(
   deps: RenderDeps,
@@ -231,6 +299,7 @@ export async function renderVideo(
     const file = join(folder, ...plan.final.output.split("/"));
     outputs.push({ language, file, durationMs: await durationMs(deps.exec, tools.ffprobe, file) });
   }
+  const moments = await momentsOf(deps, folder, tools.ffmpeg, scenes, takes, voiced, options);
   const seconds = Math.round((outputs[0]?.durationMs ?? 0) / 100) / 10;
   const result: RenderResult = {
     at: Date.now(),
@@ -242,6 +311,8 @@ export async function renderVideo(
     timeline,
     retaken: retake.map((scene) => scene.id),
     kept: scenes.filter((scene) => !retake.includes(scene)).map((scene) => scene.id),
+    version: options.version ?? null,
+    scenes: moments,
   };
   await writeFile(join(folder, "out", RESULT), `${JSON.stringify(result, null, 2)}\n`, "utf8");
   return result;

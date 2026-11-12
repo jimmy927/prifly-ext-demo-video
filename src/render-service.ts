@@ -11,6 +11,7 @@ import { lastRender, renderVideo } from "./render-run";
 import type { BackgroundRuns, Progress } from "./runs";
 import type { Language } from "./scenes";
 import type { Store } from "./store";
+import { dropVersion, nextVersion, publishVersion } from "./versions";
 import {
   choiceFor,
   edgeSampleVoices,
@@ -93,15 +94,29 @@ export function renderService(context: RenderServiceContext): RenderService {
     const voices = context.voices();
     const choiceOf = (language: Language): VoiceChoice =>
       choiceFor(voices, language, request.final);
-    return runs.start(id, (onProgress) =>
-      renderVideo(
-        context.depsFor(folder),
-        folder,
-        read.scenes,
-        { languages: brief.languages, redo: request.redo, final: request.final, choiceOf },
-        onProgress,
-      ),
-    );
+    return runs.start(id, async (onProgress) => {
+      const version = await nextVersion(folder);
+      try {
+        const result = await renderVideo(
+          context.depsFor(folder),
+          folder,
+          read.scenes,
+          {
+            languages: brief.languages,
+            redo: request.redo,
+            final: request.final,
+            choiceOf,
+            version,
+          },
+          onProgress,
+        );
+        await publishVersion(folder, version, read.scenes, result);
+        return result;
+      } catch (caught) {
+        await dropVersion(folder, version);
+        throw caught;
+      }
+    });
   };
   const pending = new Map<string, Promise<RenderResult | null>>();
   return {

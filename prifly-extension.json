@@ -24,6 +24,15 @@
       "media": true
     }
   ],
+  "sessionViews": [
+    {
+      "id": "timeline",
+      "label": "Demo studio",
+      "folder": "session-view",
+      "page": "index.html",
+      "media": true
+    }
+  ],
   "settings": [
     {
       "id": "elevenLabsKey",

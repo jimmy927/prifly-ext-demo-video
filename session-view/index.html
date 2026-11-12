@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Demo studio</title>
+    <link rel="stylesheet" href="style.css" />
+    <script>
+      // Before the first paint: the window says light or dark in the query.
+      if (new URLSearchParams(location.search).get("theme") === "dark") {
+        document.documentElement.classList.add("dark");
+      }
+    </script>
+  </head>
+  <body>
+    <div class="view">
+      <header class="head">
+        <h1 id="title">Demo studio</h1>
+        <span id="version" class="badge" hidden></span>
+        <div id="langs" class="langs" title="Language"></div>
+      </header>
+      <p id="error" class="error" hidden></p>
+      <p id="status" class="status" hidden></p>
+      <p id="empty" class="muted" hidden></p>
+      <div id="stage" class="stage" hidden>
+        <!-- biome-ignore lint/a11y/useMediaCaption: the subtitles are burned into the picture -->
+        <video id="player" class="player" controls preload="metadata"></video>
+        <p id="player-note" class="muted" hidden></p>
+      </div>
+      <section id="timeline-wrap" class="timeline-wrap" hidden>
+        <div id="scroller" class="scroller">
+          <div id="timeline" class="timeline"></div>
+        </div>
+        <p id="timeline-hint" class="hint"></p>
+      </section>
+      <section id="changes" class="block" hidden></section>
+      <section id="versions" class="block" hidden></section>
+    </div>
+    <script type="module" src="app.js"></script>
+  </body>
+</html>

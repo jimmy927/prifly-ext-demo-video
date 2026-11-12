@@ -25,6 +25,7 @@ import { answerPanel } from "./src/panel-api";
 import type { RenderDeps, RenderResult } from "./src/render-run";
 import { type RenderService, renderService } from "./src/render-service";
 import { BackgroundRuns } from "./src/runs";
+import { type SessionViews, sessionViews, TIMELINE_VIEW } from "./src/session-views";
 import { harnessPage } from "./src/sources/harness";
 import { PROJECTS } from "./src/sources/projects";
 import { createStore, type Store } from "./src/store";
@@ -49,6 +50,7 @@ const runs = new DryRuns();
 const renderRuns = new BackgroundRuns<RenderResult>();
 let dryRuns: DryRunService | null = null;
 let renders: RenderService | null = null;
+let views: SessionViews | null = null;
 let depsOverride: ((videoFolder: string) => DryRunDeps) | null = null;
 let renderOverride: ((videoFolder: string) => RenderDeps) | null = null;
 /** Whether the host took the videos root as the panel's media folder. */
@@ -140,6 +142,12 @@ function currentRenders(): RenderService {
   return renders;
 }
 
+/** Which sessions were shown the timeline lives as long as the module does. */
+function currentViews(): SessionViews {
+  views ??= sessionViews(() => api);
+  return views;
+}
+
 /** Names the videos root as the panel's media folder, where the host can serve it. */
 function serveMedia(given: ExtensionApi): void {
   mediaServed = false;
@@ -152,6 +160,13 @@ function serveMedia(given: ExtensionApi): void {
     mediaServed = true;
   } catch (caught) {
     given.log("panel media not served", { error: String(caught) });
+    return;
+  }
+  try {
+    // The session view is named like a panel; a manifest without it makes the host refuse.
+    (given as ExtensionApi & PanelMediaApi).panelMedia?.call(given, TIMELINE_VIEW, videosRoot());
+  } catch (caught) {
+    given.log("session view media not served", { error: String(caught) });
   }
 }
 
@@ -160,19 +175,21 @@ export function activate(given: ExtensionApi): () => void {
   store = null;
   dryRuns = null;
   renders = null;
+  views = null;
   serveMedia(given);
-  given.tools?.register(demoTools(currentStore, currentDryRuns, currentRenders));
-  given.log("activated", { tools: 7, media: mediaServed });
+  given.tools?.register(demoTools(currentStore, currentDryRuns, currentRenders, currentViews));
+  given.log("activated", { tools: 9, media: mediaServed });
   return () => {
     api = null;
     store = null;
     dryRuns = null;
     renders = null;
+    views = null;
     mediaServed = false;
   };
 }
 
-export async function panel(_panelId: string, request: PanelRequest): Promise<unknown> {
+export async function panel(panelId: string, request: PanelRequest): Promise<unknown> {
   return await answerPanel(
     {
       store: currentStore,
@@ -183,6 +200,7 @@ export async function panel(_panelId: string, request: PanelRequest): Promise<un
       media: () => mediaServed,
     },
     request,
+    panelId,
   );
 }
 

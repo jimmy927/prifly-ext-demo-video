@@ -9,7 +9,9 @@ import type { DryRunService } from "./dry-run-service";
 import type { RenderRequest, RenderService } from "./render-service";
 import { LANGUAGES, PRODUCTS, REVIEW_STATUSES, type ReviewStatus } from "./scenes";
 import { reportOn, saveScript } from "./script";
+import { TIMELINE_VIEW } from "./session-views";
 import type { Store } from "./store";
+import { timelineState, type ViewRequest } from "./timeline-state";
 import { MAX_NARRATION_SHARE, MAX_ON_SCREEN_WORDS, WORDS_PER_SECOND } from "./timing";
 
 export type PanelContext = {
@@ -98,7 +100,12 @@ function notesOf(value: unknown): string[] | undefined {
   return (value as string[]).map((note) => note.trim()).filter((note) => note !== "");
 }
 
-export async function answerPanel(context: PanelContext, request: PanelRequest): Promise<unknown> {
+export async function answerPanel(
+  context: PanelContext,
+  request: PanelRequest,
+  panelId = "studio",
+): Promise<unknown> {
+  if (panelId === TIMELINE_VIEW) return await answerTimeline(context, request);
   const { path, query, body } = request;
   const store = () => context.store();
   switch (path) {
@@ -135,6 +142,12 @@ export async function answerPanel(context: PanelContext, request: PanelRequest):
     default:
       return await answerRuns(context, request);
   }
+}
+
+/** The session view only reads: `api/state`. */
+async function answerTimeline(context: PanelContext, request: ViewRequest): Promise<unknown> {
+  if (request.path === "state") return await timelineState(context, request);
+  throw new Error(`No such request: ${request.path}`);
 }
 
 /** The routes of the background jobs: POST starts one (unless one runs), GET reads how it goes. */

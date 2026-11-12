@@ -1,0 +1,324 @@
+/* The window's own tokens arrive in a `prifly-look` message (see app.js) and
+   override these; these are what the page wears until then. */
+:root {
+  color-scheme: light;
+  --bg: #ffffff;
+  --fg: #16181d;
+  --card: #ffffff;
+  --muted: #f3f4f6;
+  --muted-fg: #6b7280;
+  --border: #e3e5e9;
+  --accent: #2563eb;
+  --ok: #1f8a4c;
+  --warn: #b7791f;
+  --critical: #e0443a;
+  --font: system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+:root.dark {
+  color-scheme: dark;
+  --bg: #111317;
+  --fg: #eceef2;
+  --card: #16191e;
+  --muted: #1d2127;
+  --muted-fg: #9097a2;
+  --border: #2a2f37;
+  --accent: #6b9bff;
+  --ok: #4cc17e;
+  --warn: #e0b04f;
+  --critical: #e5584f;
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font: 13px / 1.45 var(--font);
+}
+.view {
+  padding: 12px 14px 20px;
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+h1 {
+  font-size: 15px;
+  margin: 0;
+  font-weight: 600;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+h2 {
+  font-size: 13px;
+  margin: 0 0 6px;
+  font-weight: 600;
+}
+.head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.badge {
+  font: 11px / 1 var(--mono);
+  padding: 4px 6px;
+  border-radius: 999px;
+  background: var(--muted);
+  border: 1px solid var(--border);
+  color: var(--muted-fg);
+}
+.langs {
+  margin-left: auto;
+  display: flex;
+}
+.langs button {
+  border-radius: 0;
+  margin-left: -1px;
+  text-transform: uppercase;
+  font-size: 11px;
+  padding: 3px 9px;
+}
+.langs button:first-child {
+  border-radius: 6px 0 0 6px;
+  margin-left: 0;
+}
+.langs button:last-child {
+  border-radius: 0 6px 6px 0;
+}
+.langs button[aria-pressed="true"] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  position: relative;
+}
+button {
+  font: inherit;
+  color: var(--fg);
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 5px 8px;
+  cursor: pointer;
+}
+.muted,
+.hint {
+  color: var(--muted-fg);
+  margin: 0;
+}
+.hint {
+  font-size: 12px;
+}
+.error {
+  margin: 0;
+  padding: 6px 9px;
+  border-radius: 6px;
+  border: 1px solid var(--critical);
+  color: var(--critical);
+}
+.status {
+  margin: 0;
+  padding: 6px 9px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--muted);
+}
+.status::before {
+  content: "";
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 7px;
+  border-radius: 50%;
+  background: var(--warn);
+  animation: pulse 1.2s ease-in-out infinite;
+}
+@keyframes pulse {
+  50% {
+    opacity: 0.25;
+  }
+}
+.stage {
+  display: grid;
+  gap: 4px;
+}
+.player {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  background: #000;
+  border-radius: 8px;
+  display: block;
+}
+
+/* The timeline: every row is positioned in ms * the scale, set by app.js. */
+.timeline-wrap {
+  display: grid;
+  gap: 4px;
+}
+.scroller {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--card);
+}
+.timeline {
+  position: relative;
+  cursor: crosshair;
+  user-select: none;
+}
+.row {
+  position: relative;
+  border-bottom: 1px solid var(--border);
+}
+.row:last-of-type {
+  border-bottom: 0;
+}
+.row-ruler {
+  height: 22px;
+  background: var(--muted);
+}
+.row-scenes {
+  height: 62px;
+}
+.row-voice {
+  height: 40px;
+}
+.row-captions {
+  height: 28px;
+}
+.row-zooms {
+  height: 18px;
+}
+.tick {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-left: 1px solid var(--border);
+  padding: 4px 0 0 4px;
+  font: 10px / 1 var(--mono);
+  color: var(--muted-fg);
+  pointer-events: none;
+}
+.scene {
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  border-radius: 5px;
+  border: 1px solid var(--border);
+  overflow: hidden;
+  background: var(--muted) center / cover no-repeat;
+}
+.scene.current {
+  border-color: var(--accent);
+}
+.scene-label {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 10px 5px 3px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #fff;
+  background: linear-gradient(transparent, rgba(0, 0, 0, 0.7));
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.wave {
+  position: absolute;
+  top: 5px;
+  bottom: 5px;
+  background: var(--accent);
+  opacity: 0.75;
+  -webkit-mask: var(--wave) center / 100% 100% no-repeat;
+  mask: var(--wave) center / 100% 100% no-repeat;
+}
+.wave.missing {
+  mask: none;
+  -webkit-mask: none;
+  top: 50%;
+  bottom: auto;
+  height: 2px;
+  opacity: 0.35;
+}
+.chip {
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--muted);
+  border: 1px solid var(--border);
+  font-size: 11px;
+  line-height: 18px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+}
+.zoom {
+  position: absolute;
+  top: 4px;
+  width: 9px;
+  height: 9px;
+  margin-left: -4px;
+  background: var(--warn);
+  transform: rotate(45deg);
+  pointer-events: none;
+}
+.playhead {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 0;
+  border-left: 2px solid var(--critical);
+  pointer-events: none;
+  z-index: 2;
+}
+.playhead::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: -6px;
+  border: 5px solid transparent;
+  border-top-color: var(--critical);
+}
+.block {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 9px 11px;
+  background: var(--card);
+}
+.block ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 3px;
+}
+.block li.change::before {
+  content: "• ";
+  color: var(--muted-fg);
+}
+.versions button {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 34px 1fr auto;
+  gap: 8px;
+  text-align: left;
+  align-items: baseline;
+}
+.versions button[aria-current="true"] {
+  border-color: var(--accent);
+}
+.versions .num {
+  font: 12px var(--mono);
+  font-weight: 600;
+}
+.versions .when {
+  color: var(--muted-fg);
+  font-size: 12px;
+}
