@@ -18,7 +18,7 @@ export const PAGE: HarnessPage = {
 };
 
 /** ffmpeg writes its last argument where it runs; ffprobe says 2.5 s. */
-function fakeExec(ran: string[][]): Exec {
+export function fakeExec(ran: string[][]): Exec {
   return async (argv, options) => {
     ran.push([...argv]);
     if (argv[0] === "ffprobe") return { code: 0, out: "2.5\n", err: "" };

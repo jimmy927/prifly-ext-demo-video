@@ -167,8 +167,8 @@ export async function publishVersion(
     first,
     changes,
     files,
-    scenes: scenes.map((scene, index) => {
-      const place = result.timeline[index];
+    scenes: scenes.map((scene) => {
+      const place = result.timeline.find((each) => each.id === scene.id);
       const moments = result.scenes.find((each) => each.id === scene.id);
       return {
         id: scene.id,

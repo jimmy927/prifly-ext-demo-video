@@ -1,9 +1,9 @@
 import { afterEach, expect, test } from "bun:test";
-import { readdir, readFile } from "node:fs/promises";
+import { readdir, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import * as extension from "../index";
 import { diffScenes, KEEP_VERSIONS } from "../src/versions";
-import { finished, setup, until, videoOf } from "./render-fixture";
+import { fakeExec, finished, setup, until, videoOf } from "./render-fixture";
 import { SCENE, studio } from "./studio";
 
 afterEach(() => {
@@ -83,13 +83,44 @@ test("only the last ten versions stay", async () => {
   expect(await json(join(out, "latest.json"))).toEqual({ version: KEEP_VERSIONS + 2 });
 });
 
-test("a failed render leaves no half-made version", async () => {
+test("a render that fails after its waveforms leaves no half-made version and no pointer", async () => {
   const s = studio();
-  setup({ exec: async () => ({ code: 1, out: "", err: "Unknown encoder" }) });
+  const ran: string[][] = [];
+  const base = fakeExec(ran);
+  // The finished MP4 vanishes as the first waveform is drawn: publishing the version then fails.
+  setup({
+    exec: async (argv, options) => {
+      if (argv.join(" ").includes("showwavespic")) {
+        await rm(join(s.dir, id, "out", "en.mp4"), { force: true });
+      }
+      return await base(argv, options);
+    },
+  });
   const id = await videoOf(s, "V", [STEPPED]);
   await render(s, id);
-  expect((await s.ask("render", null, { id })).error).toContain("Unknown encoder");
-  expect(await versionsIn(join(s.dir, id, "out"))).toEqual([]);
+  const out = join(s.dir, id, "out");
+  expect(ran.some((argv) => argv.join(" ").includes("showwavespic"))).toBe(true);
+  expect((await s.ask("render", null, { id })).error).toContain("en.mp4");
+  expect(await versionsIn(out)).toEqual([]);
+  expect(await Bun.file(join(out, "latest.json")).exists()).toBe(false);
+});
+
+test("a waveform that fails to draw costs only the picture: the render still ends as a version", async () => {
+  const s = studio();
+  const base = fakeExec([]);
+  setup({
+    exec: async (argv, options) =>
+      argv.join(" ").includes("showwavespic")
+        ? { code: 1, out: "", err: "no filter showwavespic" }
+        : await base(argv, options),
+  });
+  const id = await videoOf(s, "V", [STEPPED]);
+  await render(s, id);
+  const view = await s.ask("render", null, { id });
+  expect(view.error).toBeNull();
+  expect(view.last.version).toBe(1);
+  expect(view.last.scenes[0].voice.en.wave).toBeNull();
+  expect(await json(join(s.dir, id, "out", "latest.json"))).toEqual({ version: 1 });
 });
 
 test("diffScenes names added, removed, retitled, reordered and re-timed scenes in plain words", () => {

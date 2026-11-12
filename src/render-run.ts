@@ -196,6 +196,39 @@ async function renderLanguage(
   await rename(partial, join(folder, ...plan.final.output.split("/")));
 }
 
+/**
+ * One narration's waveform picture, relative to the video folder. It is only
+ * decoration, so a failure says so in the progress line and gives null (the
+ * page draws a flat line) instead of failing a render whose videos are done.
+ */
+async function drawWave(
+  deps: RenderDeps,
+  folder: string,
+  ffmpeg: string,
+  version: number,
+  scene: string,
+  language: Language,
+  ms: number,
+  say: (line: string) => void,
+): Promise<string | null> {
+  const wave = `out/v${version}/wave/${language}/${scene}.png`;
+  try {
+    await mkdir(dirname(join(folder, ...wave.split("/"))), { recursive: true });
+    await run(
+      deps,
+      folder,
+      waveformArgv(ffmpeg, { file: `audio/${language}/${scene}.mp3`, ms }, wave),
+      `Drawing the ${language} waveform of ${scene}`,
+    );
+    return wave;
+  } catch (caught) {
+    say(
+      `No ${language} waveform for ${scene}: ${caught instanceof Error ? caught.message : String(caught)}`,
+    );
+    return null;
+  }
+}
+
 /** Per scene: its zoom moments, captions and, with a version, a waveform picture of each narration. */
 async function momentsOf(
   deps: RenderDeps,
@@ -205,6 +238,7 @@ async function momentsOf(
   takes: ReadonlyMap<string, Take>,
   voiced: Voiced,
   options: RenderOptions,
+  say: (line: string) => void,
 ): Promise<SceneMoments[]> {
   const moments: SceneMoments[] = [];
   for (const scene of scenes) {
@@ -224,17 +258,10 @@ async function momentsOf(
         take.durationMs,
       );
       if (said === undefined) continue;
-      let wave: string | null = null;
-      if (options.version !== undefined) {
-        wave = `out/v${options.version}/wave/${language}/${scene.id}.png`;
-        await mkdir(dirname(join(folder, ...wave.split("/"))), { recursive: true });
-        await run(
-          deps,
-          folder,
-          waveformArgv(ffmpeg, { file: `audio/${language}/${scene.id}.mp3`, ms: said.ms }, wave),
-          `Drawing the ${language} waveform of ${scene.id}`,
-        );
-      }
+      const wave =
+        options.version === undefined
+          ? null
+          : await drawWave(deps, folder, ffmpeg, options.version, scene.id, language, said.ms, say);
       moment.voice[language] = { wave, offsetMs: LEAD_MS, ms: said.ms };
     }
     moments.push(moment);
@@ -299,7 +326,7 @@ export async function renderVideo(
     const file = join(folder, ...plan.final.output.split("/"));
     outputs.push({ language, file, durationMs: await durationMs(deps.exec, tools.ffprobe, file) });
   }
-  const moments = await momentsOf(deps, folder, tools.ffmpeg, scenes, takes, voiced, options);
+  const moments = await momentsOf(deps, folder, tools.ffmpeg, scenes, takes, voiced, options, say);
   const seconds = Math.round((outputs[0]?.durationMs ?? 0) / 100) / 10;
   const result: RenderResult = {
     at: Date.now(),
