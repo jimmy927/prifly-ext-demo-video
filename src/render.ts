@@ -30,7 +30,7 @@ import { LEAD_MS, type TakeEvent, type TakeFrame } from "./take";
 import { countWords, WORDS_PER_SECOND } from "./timing";
 
 /** Bumped when a segment of the same take would come out differently. */
-const RENDER_VERSION = 2;
+const RENDER_VERSION = 3;
 
 export const FPS = 30;
 export const SIZE = { width: 1920, height: 1080 } as const;
@@ -60,6 +60,8 @@ export type RenderScene = {
   audio: { file: string; ms: number } | null;
   /** What the narration says, for the subtitles; "" for none. */
   subtitle: string;
+  /** The scene's on-screen text, drawn as a lower-third title; "" for none. Not per language. */
+  onScreen: string;
 };
 
 export type RenderInput = {
@@ -277,6 +279,56 @@ export function waveformArgv(
 export const SUBTITLE_STYLE =
   "FontName=Arial,FontSize=11,PrimaryColour=&H00FFFFFF,BackColour=&H30000000,BorderStyle=4,Outline=0,Shadow=0,MarginV=22";
 
+/** The lower-third's fade in and out. */
+export const TITLE_FADE_MS = 300;
+
+/** Segoe UI is on every Windows; the host renders there. Sizes are real pixels (PlayRes is the frame). */
+export const TITLE_FONT = "Segoe UI";
+
+const assTime = (ms: number) => {
+  const cs = Math.max(0, Math.round(ms / 10));
+  const pad = (value: number, size = 2) => String(value).padStart(size, "0");
+  return `${Math.floor(cs / 360_000)}:${pad(Math.floor(cs / 6000) % 60)}:${pad(Math.floor(cs / 100) % 60)}.${pad(cs % 100)}`;
+};
+
+/** Text for an ASS dialogue: no override braces or backslashes get through, line breaks become `\N`. */
+export function assText(text: string): string {
+  return text
+    .trim()
+    .replace(/\\/g, "/")
+    .replace(/\{/g, "(")
+    .replace(/\}/g, ")")
+    .replace(/\s*\r?\n\s*/g, "\\N");
+}
+
+/**
+ * A scene's on-screen text as an ASS file: bottom left (alignment 1), 80 px
+ * in and 230 px up so it clears the centred subtitles, which fill the bottom
+ * 180 px or so, on a dark box, shown for the whole scene with a fade at both
+ * ends. The segment is the scene, so its clock starts at 0. "" for no text.
+ */
+export function titleAss(text: string, durationMs: number): string {
+  const line = assText(text);
+  if (line === "") return "";
+  return [
+    "[Script Info]",
+    "ScriptType: v4.00+",
+    `PlayResX: ${SIZE.width}`,
+    `PlayResY: ${SIZE.height}`,
+    "WrapStyle: 0",
+    "ScaledBorderAndShadow: yes",
+    "",
+    "[V4+ Styles]",
+    "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
+    `Style: Title,${TITLE_FONT},56,&H00FFFFFF,&H00FFFFFF,&H30000000,&H30000000,-1,0,0,0,100,100,0,0,3,14,0,1,80,300,230,1`,
+    "",
+    "[Events]",
+    "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
+    `Dialogue: 0,${assTime(0)},${assTime(durationMs)},Title,,0,0,0,,{\\fad(${TITLE_FADE_MS},${TITLE_FADE_MS})}${line}`,
+    "",
+  ].join("\n");
+}
+
 export function encoderArgs(encoder: Encoder): string[] {
   const common = ["-pix_fmt", "yuv420p", "-g", String(FPS * 2)];
   if (encoder === "h264_nvenc") {
@@ -325,11 +377,16 @@ export function previewArgv(ffmpeg: string, mp4: string, webm: string): string[]
 }
 
 /** The segment's filter graph: steady 30 fps, the zoom, the subtitles, exactly the scene's length. */
-export function segmentGraph(scene: RenderScene, srt: string | null): string {
+export function segmentGraph(
+  scene: RenderScene,
+  srt: string | null,
+  title: string | null = null,
+): string {
   const filters = [`scale=${SIZE.width}:${SIZE.height}:flags=bicubic`, "setsar=1", `fps=${FPS}`];
   const zoom = zoomFilter(scene.events, scene.durationMs);
   if (zoom !== null) filters.push(zoom);
   if (srt !== null) filters.push(`subtitles=filename=${srt}:force_style='${SUBTITLE_STYLE}'`);
+  if (title !== null) filters.push(`subtitles=filename=${title}`);
   filters.push(
     `tpad=stop_mode=clone:stop_duration=${sec(1000)}`,
     `trim=duration=${sec(scene.durationMs)}`,
@@ -372,6 +429,7 @@ export function segmentKey(scene: RenderScene, language: Language, encoder: Enco
         scene.events,
         language,
         scene.subtitle,
+        scene.onScreen,
         scene.audio?.ms ?? null,
         encoder,
       ]),
@@ -395,6 +453,9 @@ export function renderPlan(input: RenderInput): RenderPlan {
     const text = sceneSrt(scene.subtitle, scene.audio?.ms ?? null, language, scene.durationMs);
     const srt = text === "" ? null : `${parts}/${scene.id}.srt`;
     if (srt !== null) files.push({ path: srt, text });
+    const assFile = titleAss(scene.onScreen, scene.durationMs);
+    const title = assFile === "" ? null : `${parts}/${scene.id}.title.ass`;
+    if (title !== null) files.push({ path: title, text: assFile });
     const output = `${parts}/${scene.id}.mp4`;
     segments.push({
       scene: scene.id,
@@ -410,7 +471,7 @@ export function renderPlan(input: RenderInput): RenderPlan {
         "-i",
         list,
         "-filter_complex",
-        segmentGraph(scene, srt),
+        segmentGraph(scene, srt, title),
         "-map",
         "[v]",
         "-an",

@@ -220,6 +220,34 @@ test("an unchanged scene keeps its review when the script is saved again; a chan
   ]);
 });
 
+test("a script_set that edits a scene keeps its notes and sets it pending; removed notes go, new scenes start empty", async () => {
+  const s = studio();
+  const id = await newVideo(s);
+  const two = { ...SCENE, id: "two", title: "Two" };
+  const three = { ...SCENE, id: "three", title: "Three" };
+  await s.fake.callTool("demo_script_set", { video: id, scenes: [SCENE, two, three] });
+  await s.ask("review", { id, scene: "pain", status: "noted", notes: ["Keep me"] });
+  await s.ask("review", { id, scene: "two", status: "noted", notes: ["Too slow", "Cut it"] });
+  await s.ask("review", { id, scene: "three", status: "noted", notes: ["Gone"] });
+  await s.fake.callTool("demo_script_set", {
+    video: id,
+    scenes: [
+      SCENE,
+      { ...two, narration: { en: "Faster words." }, review: { status: "approved", notes: ["Sent back"] } },
+      { ...SCENE, id: "fresh", title: "Fresh", review: { status: "approved", notes: ["Sneaky"] } },
+    ],
+  });
+  const scenes = (await s.ask("video", null, { id })).scenes;
+  expect(scenes.map((scene: { id: string; review: unknown }) => [scene.id, scene.review])).toEqual([
+    ["pain", { status: "noted", notes: ["Keep me"] }],
+    ["two", { status: "pending", notes: ["Too slow", "Cut it"] }],
+    ["fresh", { status: "pending", notes: [] }],
+  ]);
+  const notes = await s.fake.callTool("demo_notes", { video: id });
+  expect(notes).toContain("two (Two): pending\n  - Too slow\n  - Cut it");
+  expect(notes).not.toContain("Gone");
+});
+
 test("demo_notes returns the reader's notes per scene", async () => {
   const s = studio();
   const id = await newVideo(s);

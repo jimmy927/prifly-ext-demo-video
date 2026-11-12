@@ -330,6 +330,7 @@ export async function renderVideo(
         audio:
           said === undefined ? null : { file: `audio/${language}/${scene.id}.mp3`, ms: said.ms },
         subtitle: scene.narration[language] ?? "",
+        onScreen: scene.onScreen,
       };
     });
     const plan = renderPlan({ ffmpeg: tools.ffmpeg, language, encoder, scenes: renderScenes });
