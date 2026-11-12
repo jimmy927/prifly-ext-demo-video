@@ -247,11 +247,15 @@ test("a scene's on-screen text is a bottom-left lower-third for the scene's span
   // Segoe UI, alignment 1 (bottom left), 80 px in, 230 px up (the subtitles sit lower and centred).
   expect(ass).toContain("Style: Title,Segoe UI,56,");
   expect(ass).toContain(",1,80,300,230,1");
-  expect(ass).toContain("Dialogue: 0,0:00:00.00,0:00:04.00,Title,,0,0,0,,{\\fad(300,300)}Hire in days, not weeks");
+  expect(ass).toContain(
+    "Dialogue: 0,0:00:00.00,0:00:04.00,Title,,0,0,0,,{\\fad(300,300)}Hire in days, not weeks",
+  );
   expect(plan.segments[0]?.argv.join(" ")).toContain(
     "subtitles=filename=out/parts/en/pain.srt:force_style='",
   );
-  expect(plan.segments[0]?.argv.join(" ")).toContain("subtitles=filename=out/parts/en/pain.title.ass,");
+  expect(plan.segments[0]?.argv.join(" ")).toContain(
+    "subtitles=filename=out/parts/en/pain.title.ass,",
+  );
   // Each scene its own span, and none for a scene without text.
   expect(plan.files.some((file) => file.path.includes("two.title"))).toBe(false);
   expect(plan.segments[1]?.argv.join(" ")).not.toContain("title.ass");
@@ -262,12 +266,12 @@ test("a scene's on-screen text is a bottom-left lower-third for the scene's span
 });
 
 test("on-screen text is escaped: quotes, colons, percents and commas stay text, braces and backslashes cannot start overrides", () => {
-  const text = titleAss("It's 50%: \"fast\", {\\an8} C:\\x\nnext", 3000);
-  expect(text).toContain("It's 50%: \"fast\", (/an8) C:/x\\Nnext");
+  const text = titleAss('It\'s 50%: "fast", {\\an8} C:\\x\nnext', 3000);
+  expect(text).toContain('It\'s 50%: "fast", (/an8) C:/x\\Nnext');
   expect(text).not.toContain("{\\an8}");
   expect(titleAss("   ", 3000)).toBe("");
   // Nothing of the text reaches the filter graph, which names only the file.
-  const plan = renderPlan(input([scene({ onScreen: "It's 50%: \"a\", b" })]));
+  const plan = renderPlan(input([scene({ onScreen: 'It\'s 50%: "a", b' })]));
   const graph = plan.segments[0]?.argv[plan.segments[0].argv.indexOf("-filter_complex") + 1] ?? "";
   expect(graph).not.toContain("50%");
 });

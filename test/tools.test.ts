@@ -233,7 +233,11 @@ test("a script_set that edits a scene keeps its notes and sets it pending; remov
     video: id,
     scenes: [
       SCENE,
-      { ...two, narration: { en: "Faster words." }, review: { status: "approved", notes: ["Sent back"] } },
+      {
+        ...two,
+        narration: { en: "Faster words." },
+        review: { status: "approved", notes: ["Sent back"] },
+      },
       { ...SCENE, id: "fresh", title: "Fresh", review: { status: "approved", notes: ["Sneaky"] } },
     ],
   });
