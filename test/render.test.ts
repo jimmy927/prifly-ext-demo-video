@@ -193,6 +193,17 @@ test("the narration comes after the lead-in, is padded to its scene, and silence
   expect(graph).toContain("[a0][a1][a2]concat=n=3:v=0:a=1[a]");
 });
 
+test("the players' copy is a VP9 and Opus WebM of the finished MP4, which prifly's CEF plays", () => {
+  const { argv, partial, output } = renderPlan(input([scene()])).preview;
+  expect(output).toBe("out/en.webm");
+  expect(argv[argv.indexOf("-i") + 1]).toBe("out/en.mp4");
+  expect(argv.at(-1)).toBe(partial);
+  expect(argv[argv.indexOf("-c:v") + 1]).toBe("libvpx-vp9");
+  expect(argv[argv.indexOf("-c:a") + 1]).toBe("libopus");
+  expect(argv[argv.indexOf("-pix_fmt") + 1]).toBe("yuv420p");
+  expect(argv[argv.indexOf("-f") + 1]).toBe("webm");
+});
+
 test("the final step joins the segments without re-encoding and mixes in the narration", () => {
   const plan = renderPlan(
     input([scene(), scene({ id: "two", durationMs: 2500, audio: null, subtitle: "" })]),

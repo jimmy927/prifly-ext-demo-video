@@ -17,6 +17,10 @@
  * 2. The segments joined (`-c:v copy`) and the narration mixed in: each
  *    scene's MP3 after a short lead-in, silence where a scene says nothing,
  *    into `out/<lang>.mp4` at 1920×1080.
+ * 3. The players' copy, `out/<lang>.webm` (VP9 and Opus) from that MP4:
+ *    prifly's window is CEF built without H.264 and AAC, so a `<video>`
+ *    there refuses the MP4 ("no supported streams"). The MP4 stays the file
+ *    to publish.
  */
 
 import { createHash } from "node:crypto";
@@ -74,6 +78,8 @@ export type RenderPlan = {
   segments: Segment[];
   /** The joined, narrated video; written to `partial`, then moved to `output`. */
   final: { argv: string[]; partial: string; output: string; durationMs: number };
+  /** The players' WebM of `final.output`; written to `partial`, then moved to `output`. */
+  preview: { argv: string[]; partial: string; output: string };
   /** Each scene's place in the video, for the Video tab's timeline. */
   timeline: { id: string; startMs: number; durationMs: number }[];
 };
@@ -281,6 +287,43 @@ export function encoderArgs(encoder: Encoder): string[] {
 
 const QUIET = ["-hide_banner", "-loglevel", "error", "-nostdin", "-y"];
 
+/** The players' WebM of a finished MP4: realtime VP9, so 37 s of 1080p takes about 15 s. */
+export function previewArgv(ffmpeg: string, mp4: string, webm: string): string[] {
+  return [
+    ffmpeg,
+    ...QUIET,
+    "-i",
+    mp4,
+    "-map",
+    "0:v",
+    "-map",
+    "0:a",
+    "-c:v",
+    "libvpx-vp9",
+    "-deadline",
+    "realtime",
+    "-cpu-used",
+    "8",
+    "-row-mt",
+    "1",
+    "-crf",
+    "32",
+    "-b:v",
+    "0",
+    "-pix_fmt",
+    "yuv420p",
+    "-g",
+    String(FPS * 2),
+    "-c:a",
+    "libopus",
+    "-b:a",
+    "128k",
+    "-f",
+    "webm",
+    webm,
+  ];
+}
+
 /** The segment's filter graph: steady 30 fps, the zoom, the subtitles, exactly the scene's length. */
 export function segmentGraph(scene: RenderScene, srt: string | null): string {
   const filters = [`scale=${SIZE.width}:${SIZE.height}:flags=bicubic`, "setsar=1", `fps=${FPS}`];
@@ -416,10 +459,17 @@ export function renderPlan(input: RenderInput): RenderPlan {
     sec(start),
     partial,
   ];
+  const output = `out/${language}.mp4`;
+  const previewPartial = `out/${language}.part.webm`;
   return {
     files,
     segments,
-    final: { argv: finalArgv, partial, output: `out/${language}.mp4`, durationMs: start },
+    final: { argv: finalArgv, partial, output, durationMs: start },
+    preview: {
+      argv: previewArgv(ffmpeg, output, previewPartial),
+      partial: previewPartial,
+      output: `out/${language}.webm`,
+    },
     timeline,
   };
 }

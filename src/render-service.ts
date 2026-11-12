@@ -26,7 +26,7 @@ export type RenderFile = {
   language: Language;
   /** The MP4 on the host's disk. */
   path: string;
-  /** What the panel's player loads through the host's media route; null without the panel-media feature. */
+  /** What the panel's player loads through the host's media route (the WebM when the render made one); null without the panel-media feature. */
   url: string | null;
 };
 
@@ -77,7 +77,9 @@ export function renderService(context: RenderServiceContext): RenderService {
     const files = (last?.outputs ?? []).map((each) => ({
       language: each.language,
       path: each.file,
-      url: context.media() ? `media/${id}/out/${each.language}.mp4?v=${last?.at ?? 0}` : null,
+      url: context.media()
+        ? `media/${id}/out/${each.language}.${each.preview === undefined ? "mp4" : "webm"}?v=${last?.at ?? 0}`
+        : null,
     }));
     return {
       running,

@@ -1,6 +1,6 @@
 /**
  * A video's versions: every render becomes `out/v<N>/` with its `<lang>.mp4`
- * files, the narration's waveform pictures, a snapshot of `scenes.json` (what
+ * and `<lang>.webm` files, the narration's waveform pictures, a snapshot of `scenes.json` (what
  * the next version is compared with), `changes.json` (what differs from the
  * version before, in plain words) and `version.json` (what the viewer page
  * draws). `out/latest.json` names the newest; the last ten are kept. The
@@ -33,6 +33,8 @@ export type VersionInfo = {
   changes: string[];
   /** Per language, the MP4 relative to the video folder. */
   files: Partial<Record<Language, string>>;
+  /** Per language, the WebM the viewer plays; absent from a version made before it. */
+  previews?: Partial<Record<Language, string>>;
   scenes: VersionScene[];
 };
 
@@ -150,9 +152,13 @@ export async function publishVersion(
   const dir = versionDir(folder, version);
   await mkdir(dir, { recursive: true });
   const files: VersionInfo["files"] = {};
+  const previews: NonNullable<VersionInfo["previews"]> = {};
   for (const output of result.outputs) {
     await copyFile(output.file, join(dir, `${output.language}.mp4`));
     files[output.language] = `out/v${version}/${output.language}.mp4`;
+    if (output.preview === undefined) continue;
+    await copyFile(output.preview, join(dir, `${output.language}.webm`));
+    previews[output.language] = `out/v${version}/${output.language}.webm`;
   }
   const earlier = (await versionNumbers(folder)).filter((each) => each < version).at(-1);
   const previous = earlier === undefined ? null : await readSnapshot(folder, earlier);
@@ -167,6 +173,7 @@ export async function publishVersion(
     first,
     changes,
     files,
+    previews,
     scenes: scenes.map((scene) => {
       const place = result.timeline.find((each) => each.id === scene.id);
       const moments = result.scenes.find((each) => each.id === scene.id);

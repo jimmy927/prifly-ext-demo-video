@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from "bun:test";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import * as extension from "../index";
 import { finished, PAGE, setup, until, videoOf } from "./render-fixture";
@@ -69,7 +69,7 @@ test("after renders the state lists the versions newest first with their moments
   const [two, one] = state.versions;
   expect(one.changes).toEqual(["First version"]);
   expect(two.changes).toEqual(["Scene 1 (The pain): minimum hold 1500 ms to 4000 ms"]);
-  expect(two.files.en).toMatch(new RegExp(`^media/${id}/out/v2/en\\.mp4\\?v=\\d+$`));
+  expect(two.files.en).toMatch(new RegExp(`^media/${id}/out/v2/en\\.webm\\?v=\\d+$`));
   expect(two.scenes[0]).toMatchObject({
     id: "pain",
     title: "The pain",
@@ -96,6 +96,18 @@ test("without the media route the state gives no URLs to play or draw", async ()
   expect(state.media).toBe(false);
   expect(state.versions[0].files).toEqual({});
   expect(state.versions[0].scenes[0].voice.en.wave).toBeNull();
+});
+
+test("a version made before the WebM still gives its MP4 to the player", async () => {
+  const s = withMedia();
+  setup();
+  const id = await videoOf(s, "V", [STEPPED]);
+  await render(s, id);
+  const file = join(s.dir, id, "out", "v1", "version.json");
+  const { previews: _, ...older } = JSON.parse(await readFile(file, "utf8"));
+  await writeFile(file, JSON.stringify(older));
+  const state = await s.askView({ video: id });
+  expect(state.versions[0].files.en).toMatch(new RegExp(`^media/${id}/out/v1/en\\.mp4\\?v=\\d+$`));
 });
 
 test("a page opened on its own names the video in the query", async () => {

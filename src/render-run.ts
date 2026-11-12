@@ -1,5 +1,5 @@
 /**
- * A render, from the script to `out/<lang>.mp4`: voice every scene (cached),
+ * A render, from the script to `out/<lang>.mp4` and the players' `out/<lang>.webm`: voice every scene (cached),
  * take the scenes that need it in the extension's own browser (one at a
  * time, the dry run's browser lock), then for each language write the
  * render plan's files and run its ffmpeg lines in the video's folder. A
@@ -61,7 +61,14 @@ export type SceneMoments = {
   captions: Partial<Record<Language, Cue[]>>;
 };
 
-export type RenderOutput = { language: Language; file: string; durationMs: number };
+export type RenderOutput = {
+  language: Language;
+  /** The MP4 (H.264, AAC): the file to publish. */
+  file: string;
+  /** The WebM (VP9, Opus) the players load; absent from a render made before it. */
+  preview?: string;
+  durationMs: number;
+};
 
 export type RenderResult = {
   at: number;
@@ -194,6 +201,11 @@ async function renderLanguage(
   await rm(partial, { force: true });
   await run(deps, folder, plan.final.argv, `Joining the ${language} video`);
   await rename(partial, join(folder, ...plan.final.output.split("/")));
+  say(`Render ${language}: the players' WebM`);
+  const preview = join(folder, ...plan.preview.partial.split("/"));
+  await rm(preview, { force: true });
+  await run(deps, folder, plan.preview.argv, `Encoding the ${language} WebM`);
+  await rename(preview, join(folder, ...plan.preview.output.split("/")));
 }
 
 /**
@@ -324,7 +336,12 @@ export async function renderVideo(
     await renderLanguage(deps, folder, plan, language, (line) => say(line, total));
     timeline = plan.timeline;
     const file = join(folder, ...plan.final.output.split("/"));
-    outputs.push({ language, file, durationMs: await durationMs(deps.exec, tools.ffprobe, file) });
+    outputs.push({
+      language,
+      file,
+      preview: join(folder, ...plan.preview.output.split("/")),
+      durationMs: await durationMs(deps.exec, tools.ffprobe, file),
+    });
   }
   const moments = await momentsOf(deps, folder, tools.ffmpeg, scenes, takes, voiced, options, say);
   const seconds = Math.round((outputs[0]?.durationMs ?? 0) / 100) / 10;

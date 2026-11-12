@@ -49,7 +49,10 @@ export type TimelineVersion = {
   durationMs: number;
   first: boolean;
   changes: string[];
-  /** Per language, the MP4 the player loads; empty without the media route. */
+  /**
+   * Per language, what the player loads: the WebM, since prifly's CEF plays
+   * no H.264, or the MP4 of a version made before it; empty without the media route.
+   */
   files: PerLanguage<string>;
   scenes: TimelineVersionScene[];
 };
@@ -101,7 +104,12 @@ async function versionsOf(context: PanelContext, id: string): Promise<TimelineVe
       first: info.first,
       changes: info.changes,
       files: media
-        ? Object.fromEntries(Object.entries(info.files).map(([lang, path]) => [lang, url(path)]))
+        ? Object.fromEntries(
+            Object.entries({ ...info.files, ...info.previews }).map(([lang, path]) => [
+              lang,
+              url(path),
+            ]),
+          )
         : {},
       scenes: info.scenes.map((scene) => ({
         ...scene,

@@ -29,6 +29,7 @@ test("the first render is v1 with its files, the first-version change and the la
   await render(s, id);
   const out = join(s.dir, id, "out");
   expect(await Bun.file(join(out, "v1", "en.mp4")).exists()).toBe(true);
+  expect(await Bun.file(join(out, "v1", "en.webm")).exists()).toBe(true);
   // What the panel reads stays where it was.
   expect(await Bun.file(join(out, "en.mp4")).exists()).toBe(true);
   expect(await json(join(out, "v1", "changes.json"))).toEqual({

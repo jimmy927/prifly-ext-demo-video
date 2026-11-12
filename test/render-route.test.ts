@@ -21,11 +21,18 @@ test("render runs in the background, ends with the MP4 and its timeline, and sho
   const view = await s.ask("render", null, { id });
   expect(view.error).toBeNull();
   expect(view.last.outputs).toEqual([
-    { language: "en", file: join(s.dir, id, "out", "en.mp4"), durationMs: 2500 },
+    {
+      language: "en",
+      file: join(s.dir, id, "out", "en.mp4"),
+      preview: join(s.dir, id, "out", "en.webm"),
+      durationMs: 2500,
+    },
   ]);
   expect(view.last.timeline[0]).toMatchObject({ id: "pain", startMs: 0 });
   expect(await Bun.file(join(s.dir, id, "out", "en.mp4")).exists()).toBe(true);
   expect(await Bun.file(join(s.dir, id, "out", "en.part.mp4")).exists()).toBe(false);
+  expect(await Bun.file(join(s.dir, id, "out", "en.webm")).exists()).toBe(true);
+  expect(await Bun.file(join(s.dir, id, "out", "en.part.webm")).exists()).toBe(false);
   expect(spoken).toEqual(["Hiring takes weeks."]);
   expect(ran.some((argv) => argv.at(-1) === "out/parts/en/pain.mp4")).toBe(true);
   expect((await s.ask("video", null, { id })).render.last.ok).toBe(true);
@@ -54,7 +61,7 @@ test("with panel-media the videos root is served and the file has its media URL"
   await s.ask("render", { id });
   await until(finished(s, id));
   const view = await s.ask("render", null, { id });
-  expect(view.files[0].url).toBe(`media/${id}/out/en.mp4?v=${view.last.at}`);
+  expect(view.files[0].url).toBe(`media/${id}/out/en.webm?v=${view.last.at}`);
 });
 
 test("a prifly with the feature named but no panelMedia call does not claim playback", async () => {
@@ -80,7 +87,7 @@ test("Redo noted scenes takes and renders only the noted scene, keeps the rest a
   const outputs = ran
     .filter((argv) => argv[0] === "ffmpeg" && !argv.includes("-frames:v"))
     .map((argv) => argv.at(-1));
-  expect(outputs).toEqual(["out/parts/en/two.mp4", "out/en.part.mp4"]);
+  expect(outputs).toEqual(["out/parts/en/two.mp4", "out/en.part.mp4", "out/en.part.webm"]);
 });
 
 test("one render at a time: another video's start is refused and says whose runs", async () => {

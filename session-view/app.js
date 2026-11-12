@@ -8,6 +8,8 @@
 // object (or open the page with `?fixture=<url of a state .json>`) and nothing
 // is polled; `?video=<id>` is passed on to `api/state` for a page opened on its own.
 
+import { refusal } from "./player.js";
+
 const POLL_MS = 2000;
 /** The timeline is at least this wide per second of video; a longer video scrolls. */
 const MIN_PX_PER_SECOND = 24;
@@ -63,6 +65,8 @@ const S = {
   /** A version the reader picked; null follows the newest. */
   pinned: null,
   fetchError: null,
+  /** The source the player refused, and why; a redraw keeps saying so until the source changes. */
+  playError: null,
   /** What the drawn timeline was made from, so a poll that changes nothing there leaves it be. */
   timelineKey: null,
 };
@@ -131,7 +135,7 @@ function drawPlayer(state, version) {
     ? "Playing and the pictures need a newer prifly: it does not serve the video folder."
     : src === null && version !== null
       ? `This version has no ${S.lang} video.`
-      : null;
+      : (S.playError?.src === src && S.playError.message) || null;
   note.hidden = reason === null;
   note.textContent = reason ?? "";
   if (src === null) {
@@ -405,6 +409,10 @@ function updatePlayhead() {
 
 function followPlayer() {
   const player = $("player");
+  player.addEventListener("error", () => {
+    S.playError = refusal(player);
+    drawPlayer(S.state, shownVersion());
+  });
   for (const type of ["timeupdate", "seeked", "play", "pause", "loadedmetadata"]) {
     player.addEventListener(type, updatePlayhead);
   }
