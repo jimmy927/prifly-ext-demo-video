@@ -1,8 +1,8 @@
 /**
- * The render as the panel and the `demo_render` tool see it: start one for a
- * video (in the background, one render at a time, whichever video; its takes
- * share the browser lock with the dry run), read how it is going and how the
- * last one went, and the voice samples to pick a voice by ear.
+ * The render as the `demo_render` tool and the session view see it: start one
+ * for a video (in the background, one render at a time, whichever video; its
+ * takes share the browser lock with the dry run), read how it is going and how
+ * the last one went, and the voice samples to pick a voice by ear.
  */
 
 import { join } from "node:path";
@@ -11,7 +11,7 @@ import { lastRender, renderVideo } from "./render-run";
 import type { BackgroundRuns, Progress } from "./runs";
 import type { Language } from "./scenes";
 import type { Store } from "./store";
-import { dropVersion, nextVersion, publishVersion } from "./versions";
+import { dropVersion, nextVersion, publishVersion, type VersionVoice } from "./versions";
 import {
   choiceFor,
   edgeSampleVoices,
@@ -26,7 +26,7 @@ export type RenderFile = {
   language: Language;
   /** The MP4 on the host's disk. */
   path: string;
-  /** What the panel's player loads through the host's media route (the WebM when the render made one); null without the panel-media feature. */
+  /** The media route's URL of the file (the WebM when the render made one); null without the panel-media feature. */
   url: string | null;
 };
 
@@ -41,6 +41,45 @@ export type RenderView = {
 
 export type RenderRequest = { redo: "all" | "noted"; final: boolean };
 
+/** `video`: take the line from its script; left out, a stock line. */
+export type SampleRequest = { video?: string; language: Language; final: boolean };
+
+/** Longest line a sample speaks: a few seconds, so the reader can judge three voices quickly. */
+const SAMPLE_CHARS = 200;
+
+/** `text` cut at a word (and its sentence end when there is one) within `SAMPLE_CHARS`. */
+export function shortLine(text: string): string {
+  const line = text.trim().replace(/\s+/g, " ");
+  if (line.length <= SAMPLE_CHARS) return line;
+  const cut = line.slice(0, SAMPLE_CHARS);
+  const sentence = Math.max(cut.lastIndexOf(". "), cut.lastIndexOf("! "), cut.lastIndexOf("? "));
+  return sentence >= 40 ? cut.slice(0, sentence + 1) : cut.slice(0, cut.lastIndexOf(" "));
+}
+
+/** Under the videos root: the sample files, which belong to no video. */
+export const SAMPLES_FOLDER = "_voice-samples";
+
+/** What a version records about its narration. */
+function versionVoice(
+  languages: readonly Language[],
+  final: boolean,
+  choiceOf: (language: Language) => VoiceChoice,
+): VersionVoice {
+  const voices: VersionVoice["voices"] = {};
+  let model: string | undefined;
+  for (const language of languages) {
+    const choice = choiceOf(language);
+    voices[language] = choice.voice;
+    if (choice.engine === "elevenlabs") model = choice.model;
+  }
+  return {
+    mode: final ? "final" : "draft",
+    engine: final ? "elevenlabs" : "edge",
+    voices,
+    ...(model === undefined ? {} : { model }),
+  };
+}
+
 export type RenderService = {
   view(id: string): Promise<RenderView>;
   start(id: string, request: RenderRequest): Promise<RenderView>;
@@ -48,12 +87,8 @@ export type RenderService = {
     id: string,
     request: RenderRequest,
   ): Promise<{ result: RenderResult | null; error: string | null; busyWith: string | null }>;
-  /** Three voices of a language saying a line of the video (or a stock line), the configured one first. */
-  voiceSamples(
-    id: string,
-    language: Language,
-    final: boolean,
-  ): Promise<{ text: string; samples: Sample[] }>;
+  /** Three voices of a language saying a line of the video (or a stock line), the configured one first, as MP3 files. */
+  voiceSamples(request: SampleRequest): Promise<{ text: string; samples: Sample[] }>;
 };
 
 export type RenderServiceContext = {
@@ -96,6 +131,8 @@ export function renderService(context: RenderServiceContext): RenderService {
     const voices = context.voices();
     const choiceOf = (language: Language): VoiceChoice =>
       choiceFor(voices, language, request.final);
+    // Before the run starts: a Final voice with no ElevenLabs voice id fails the call, not the render.
+    const voice = versionVoice(brief.languages, request.final, choiceOf);
     return runs.start(id, async (onProgress) => {
       const version = await nextVersion(folder);
       try {
@@ -112,7 +149,7 @@ export function renderService(context: RenderServiceContext): RenderService {
           },
           onProgress,
         );
-        await publishVersion(folder, version, read.scenes, result);
+        await publishVersion(folder, version, read.scenes, result, voice);
         return result;
       } catch (caught) {
         await dropVersion(folder, version);
@@ -140,13 +177,16 @@ export function renderService(context: RenderServiceContext): RenderService {
       if (same === undefined) return { result: null, error: null, busyWith: started.running };
       return { result: await same, error: runs.errorOf(id), busyWith: null };
     },
-    async voiceSamples(id, language, final) {
-      await store().entry(id);
-      const { scenes } = await store().readScenes(id);
-      const text = scenes
-        .map((scene) => scene.narration[language] ?? "")
-        .find((each) => each !== "");
-      const line = text ?? SAMPLE_TEXT[language];
+    async voiceSamples({ video, language, final }) {
+      let line = SAMPLE_TEXT[language];
+      if (video !== undefined) {
+        await store().entry(video);
+        const { scenes } = await store().readScenes(video);
+        const said = scenes
+          .map((scene) => scene.narration[language] ?? "")
+          .find((each) => each !== "");
+        if (said !== undefined) line = shortLine(said);
+      }
       const voices = context.voices();
       const choices: { choice: VoiceChoice; label: string }[] = [];
       if (!final) {
@@ -165,10 +205,10 @@ export function renderService(context: RenderServiceContext): RenderService {
           });
         }
       }
-      const deps = context.depsFor(store().folder(id));
+      const deps = context.depsFor(video === undefined ? store().root : store().folder(video));
       return {
         text: line,
-        samples: await samples(deps.synth, join(store().root, "_voice-samples"), line, choices),
+        samples: await samples(deps.synth, join(store().root, SAMPLES_FOLDER), line, choices),
       };
     },
   };

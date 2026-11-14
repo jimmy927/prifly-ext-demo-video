@@ -1,12 +1,9 @@
 /**
- * The dry run as the panel and the `demo_dry_run` tool see it: start one
- * for a video (in the background; two never overlap, whichever video they
- * are for), read how it is going and how the last one went, and read a
- * scene's still as a `data:` URL (the host's panel route answers JSON only,
- * `apps/desktop-host/src/extensions/panel.ts`).
+ * The dry run as the `demo_dry_run` tool sees it: start one for a video (in
+ * the background; two never overlap, whichever video they are for) and read
+ * how it is going and how the last one went.
  */
 
-import { readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 import {
   type DryRunDeps,
@@ -38,10 +35,7 @@ export type DryRunService = {
   runAndWait(
     id: string,
   ): Promise<{ result: DryRunResult | null; error: string | null; busyWith: string | null }>;
-  still(id: string, scene: string): Promise<{ scene: string; at: number; dataUrl: string }>;
 };
-
-const SCENE_ID = /^[a-z0-9][a-z0-9-]{0,47}$/;
 
 export function dryRunService(
   store: () => Store,
@@ -86,23 +80,6 @@ export function dryRunService(
       const same = started.running === id ? pending.get(id) : undefined;
       if (same === undefined) return { result: null, error: null, busyWith: started.running };
       return { result: await same, error: runs.errorOf(id), busyWith: null };
-    },
-    async still(id, scene) {
-      await store().entry(id);
-      if (!SCENE_ID.test(scene)) throw new Error(`Not a scene id: ${scene}`);
-      const file = join(stills(id), `${scene}.png`);
-      let bytes: Buffer;
-      let at: number;
-      try {
-        [bytes, at] = await Promise.all([readFile(file), stat(file).then((info) => info.mtimeMs)]);
-      } catch {
-        throw new Error(`No still of ${scene} yet: run the dry run first`);
-      }
-      return {
-        scene,
-        at: Math.round(at),
-        dataUrl: `data:image/png;base64,${bytes.toString("base64")}`,
-      };
     },
   };
 }

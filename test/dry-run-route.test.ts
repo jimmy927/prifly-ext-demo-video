@@ -1,7 +1,7 @@
 import { afterEach, expect, test } from "bun:test";
 import * as extension from "../index";
 import type { HarnessPage } from "../src/sources/harness";
-import { fakeLauncher, fakePage, PNG } from "./fake-browser";
+import { fakeLauncher, fakePage } from "./fake-browser";
 import { SCENE, studio } from "./studio";
 
 const PAGE: HarnessPage = {
@@ -76,23 +76,6 @@ test("dry-run starts in the background, shows progress, refuses a second run and
   // Free again: B's run starts now.
   expect((await s.ask("dry-run", { id: b })).running).toBe(true);
   await until(async () => (await s.ask("dry-run", null, { id: b })).running === false);
-});
-
-test("still answers a scene's PNG as a data: URL, and refuses one with no still or a bad id", async () => {
-  const s = studio();
-  const gate = gated();
-  gate.release();
-  const id = await videoWith(s, "V", []);
-  await expect(s.ask("still", null, { id, scene: "pain" })).rejects.toThrow("No still of pain yet");
-  await s.ask("dry-run", { id });
-  await until(async () => (await s.ask("dry-run", null, { id })).last !== null);
-  const still = await s.ask("still", null, { id, scene: "pain" });
-  expect(still.dataUrl).toBe(`data:image/png;base64,${Buffer.from(PNG).toString("base64")}`);
-  expect(typeof still.at).toBe("number");
-  await expect(s.ask("still", null, { id, scene: "../brief" })).rejects.toThrow("Not a scene id");
-  await expect(s.ask("still", null, { id: "ghost", scene: "pain" })).rejects.toThrow(
-    "No video ghost",
-  );
 });
 
 test("a failing step comes back on the route and in the tool's answer", async () => {

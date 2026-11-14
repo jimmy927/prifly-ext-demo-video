@@ -4,7 +4,7 @@
  * the next version is compared with), `changes.json` (what differs from the
  * version before, in plain words) and `version.json` (what the viewer page
  * draws). `out/latest.json` names the newest; the last ten are kept. The
- * panel's own `out/<lang>.mp4` stays as the render wrote it.
+ * render's own `out/<lang>.mp4` stays as it wrote it; `version.json` also says which narration (Draft or Final) it used.
  */
 
 import { copyFile, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
@@ -36,7 +36,25 @@ export type VersionInfo = {
   /** Per language, the WebM the viewer plays; absent from a version made before it. */
   previews?: Partial<Record<Language, string>>;
   scenes: VersionScene[];
+  /** The narration this version used; absent from a version made before it was recorded. */
+  voice?: VersionVoice;
 };
+
+/** Which narration a version was made with: Draft (Edge) or Final (ElevenLabs), and the voice per language. */
+export type VersionVoice = {
+  mode: "draft" | "final";
+  engine: "edge" | "elevenlabs";
+  /** The voice (Edge name or ElevenLabs id) each language was spoken in. */
+  voices: Partial<Record<Language, string>>;
+  model?: string;
+};
+
+/** The viewer's line for a version's narration, without the "Voice: " in front. */
+export function voiceLabel(voice: VersionVoice): string {
+  if (voice.mode === "final") return "Final (ElevenLabs)";
+  const names = [...new Set(Object.values(voice.voices))];
+  return names.length === 0 ? "Draft (Edge)" : `Draft (Edge, ${names.join(", ")})`;
+}
 
 export type Changes = { version: number; first: boolean; changes: string[] };
 
@@ -148,6 +166,7 @@ export async function publishVersion(
   version: number,
   scenes: readonly Scene[],
   result: RenderResult,
+  voice?: VersionVoice,
 ): Promise<VersionInfo> {
   const dir = versionDir(folder, version);
   await mkdir(dir, { recursive: true });
@@ -174,6 +193,7 @@ export async function publishVersion(
     changes,
     files,
     previews,
+    ...(voice === undefined ? {} : { voice }),
     scenes: scenes.map((scene) => {
       const place = result.timeline.find((each) => each.id === scene.id);
       const moments = result.scenes.find((each) => each.id === scene.id);

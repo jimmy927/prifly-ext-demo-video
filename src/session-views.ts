@@ -8,7 +8,7 @@
 
 import type { ExtensionApi } from "@prifly/extension-api";
 
-/** The manifest's session view: its id is not the studio panel's. */
+/** The manifest's session view: its id is the one the manifest names. */
 export const TIMELINE_VIEW = "timeline";
 
 type SessionViewApi = {

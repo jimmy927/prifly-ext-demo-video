@@ -51,11 +51,8 @@ test("with panel-media the videos root is served and the file has its media URL"
     panelMedia: (panel: string, folder: string) => given.push([panel, folder]),
   });
   extension.activate(s.fake.api);
-  expect(given).toEqual([
-    ["studio", s.dir],
-    ["timeline", s.dir],
-  ]);
-  expect((await s.ask("config")).media).toBe(true);
+  expect(given).toEqual([["timeline", s.dir]]);
+  expect((await s.askView({ video: "none" })).media).toBe(true);
   setup();
   const id = await videoOf(s, "V", [SCENE]);
   await s.ask("render", { id });
@@ -66,7 +63,7 @@ test("with panel-media the videos root is served and the file has its media URL"
 
 test("a prifly with the feature named but no panelMedia call does not claim playback", async () => {
   const s = studio({ features: ["panel-media"] });
-  expect((await s.ask("config")).media).toBe(false);
+  expect((await s.askView({ video: "none" })).media).toBe(false);
 });
 
 test("Redo noted scenes takes and renders only the noted scene, keeps the rest and joins them", async () => {
@@ -175,28 +172,4 @@ test("the tool answers with the files and what was taken", async () => {
   expect(answer).toContain("Rendered.");
   expect(answer).toContain(`- en: ${join(s.dir, id, "out", "en.mp4")} (2.5 s)`);
   expect(answer).toContain("Taken again: pain");
-});
-
-test("voice-sample answers three spoken samples, and refuses an unknown language", async () => {
-  const s = studio();
-  const { spoken } = setup();
-  const id = await videoOf(s, "V", [SCENE]);
-  const answer = await s.ask("voice-sample", null, { id, lang: "en" });
-  expect(answer.text).toBe("Hiring takes weeks.");
-  expect(answer.samples.map((each: { voice: string }) => each.voice)).toEqual([
-    "en-GB-SoniaNeural",
-    "en-GB-RyanNeural",
-    "en-GB-LibbyNeural",
-  ]);
-  expect(spoken).toHaveLength(3);
-  await expect(s.ask("voice-sample", null, { id, lang: "de" })).rejects.toThrow(
-    "lang must be sv or en",
-  );
-});
-
-test("a bad redo is refused", async () => {
-  const s = studio();
-  setup();
-  const id = await videoOf(s, "V", [SCENE]);
-  await expect(s.ask("render", { id, redo: "some" })).rejects.toThrow("redo must be all or noted");
 });

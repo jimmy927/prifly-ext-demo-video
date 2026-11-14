@@ -97,6 +97,7 @@ function drawHeader(state, version) {
   const badge = $("version");
   badge.hidden = version === null;
   badge.textContent = version === null ? "" : `v${version.version}`;
+  $("voice").textContent = version === null ? "" : `Voice: ${version.voice ?? "unknown"}`;
   const langs = state.languages;
   if (!langs.includes(S.lang)) S.lang = langs[0] ?? null;
   $("langs").replaceChildren(

@@ -36,3 +36,17 @@ export function videosRoot(): string {
     ? win32.join(base, "demo-videos")
     : posix.join(base, "demo-videos");
 }
+
+/**
+ * Where prifly keeps dictation recordings: `dictation-recordings` in its data
+ * folder (`RECORDINGS_FOLDER` in prifly's `dictation/recording-files.ts`),
+ * derived like `videosRoot`. `PRIFLY_DICTATION_RECORDINGS_DIR` moves it, for tests.
+ */
+export function dictationRecordingsDir(): string {
+  const moved = process.env["PRIFLY_DICTATION_RECORDINGS_DIR"];
+  if (moved !== undefined && moved !== "") return moved;
+  const base = priflyDataDir(process.platform, process.env, process.env["HOME"] ?? homedir());
+  return process.platform === "win32"
+    ? win32.join(base, "dictation-recordings")
+    : posix.join(base, "dictation-recordings");
+}

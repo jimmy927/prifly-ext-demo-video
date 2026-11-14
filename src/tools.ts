@@ -9,10 +9,11 @@
 import type { ExtensionTool } from "@prifly/extension-api";
 import { type DryRunService, dryRunText } from "./dry-run-service";
 import { type RenderService, renderText } from "./render-service";
-import { type Brief, PRODUCTS } from "./scenes";
+import { type Brief, LANGUAGES, PRODUCTS } from "./scenes";
 import { reportText, saveScript } from "./script";
 import type { SessionViews } from "./session-views";
 import type { Store } from "./store";
+import type { Sample } from "./voice";
 
 const VIDEO = {
   type: "string",
@@ -41,6 +42,44 @@ function videoArg(args: Record<string, unknown>): string {
   const id = args["video"];
   if (typeof id !== "string" || id.trim() === "") throw new Error("video is required");
   return id.trim();
+}
+
+/** The narration a tool argument names: Draft (Edge voices) unless the reader asked for Final. */
+function voiceArg(args: Record<string, unknown>): boolean {
+  const voice = args["voice"];
+  if (voice === undefined || voice === "draft") return false;
+  if (voice === "final") return true;
+  throw new Error('voice must be "draft" or "final"');
+}
+
+const VOICE = {
+  type: "string",
+  enum: ["draft", "final"],
+  description:
+    "Draft (default): Edge voices, free. Final: ElevenLabs, which spends the reader's characters; use it only when the reader asked for the final or published voice.",
+};
+
+/** One sample per line: the file, then which voice and model it is. */
+export function samplesText(
+  line: string,
+  language: string,
+  final: boolean,
+  samples: readonly Sample[],
+): string {
+  const lines = [
+    `${samples.length} ${final ? "Final (ElevenLabs)" : "Draft (Edge)"} voice samples in ${language}, each saying: "${line}"`,
+  ];
+  for (const [i, sample] of samples.entries()) {
+    const what =
+      sample.engine === "elevenlabs"
+        ? `ElevenLabs voice ${sample.label}, model ${sample.model}`
+        : `Edge voice ${sample.voice}${i === 0 ? " (the one set in the settings)" : ""}`;
+    lines.push(`${i + 1}. ${sample.file} - ${what}`);
+  }
+  lines.push(
+    "Link the files in the reply so the reader can play them; the one they pick is set in Settings > Extensions > Demo studio (Edge voice per language, or the ElevenLabs voice id).",
+  );
+  return lines.join("\n");
 }
 
 /** demo_create: a new video, or the existing one of that title (its brief then left as it is). */
@@ -108,6 +147,7 @@ export function demoTools(
   dryRun: () => DryRunService,
   render: () => RenderService,
   views: () => SessionViews,
+  reference: () => (pick: "auto" | string[]) => Promise<string>,
 ): ExtensionTool[] {
   return [
     {
@@ -117,15 +157,14 @@ export function demoTools(
       inputSchema: objectSchema({}, []),
       call: async () => {
         const videos = await store().list();
-        if (videos.length === 0)
-          return "No videos yet. The reader makes one with New video in the Demo studio panel.";
+        if (videos.length === 0) return "No videos yet. Make one with demo_create.";
         return json(videos);
       },
     },
     {
       name: "demo_create",
       description:
-        "Makes a new video (the Demo studio's own files, so no confirm card) and answers with its id, which every other demo_* tool takes; the panel's New video button does the same. title and product (odi or prifly) are required. brief, when given, is written in the same call exactly as demo_brief_set writes it (its title then replaces title). A title that already names a video (ignoring case and surrounding spaces) makes no second one: the answer gives the existing id, and a brief passed with it is not written, so an existing brief is never overwritten silently; use demo_brief_set for that.",
+        "Makes a new video (the Demo studio's own files, so no confirm card) and answers with its id, which every other demo_* tool takes; title and product (odi or prifly) are required. brief, when given, is written in the same call exactly as demo_brief_set writes it (its title then replaces title). A title that already names a video (ignoring case and surrounding spaces) makes no second one: the answer gives the existing id, and a brief passed with it is not written, so an existing brief is never overwritten silently; use demo_brief_set for that.",
       inputSchema: objectSchema(
         {
           title: { type: "string", description: "The video's title." },
@@ -152,7 +191,7 @@ export function demoTools(
     {
       name: "demo_brief_set",
       description:
-        "Writes a video's whole brief (the Demo studio's own file, so no confirm card): title, product (odi or prifly), audience, pain, aha, callToAction, languages (sv and/or en), targetSeconds, optional releaseNote. Fields the panel's Brief tab shows are replaced; unknown fields are refused.",
+        "Writes a video's whole brief (the Demo studio's own file, so no confirm card): title, product (odi or prifly), audience, pain, aha, callToAction, languages (sv and/or en), targetSeconds, optional releaseNote. Unknown fields are refused.",
       inputSchema: objectSchema(
         {
           video: VIDEO,
@@ -189,7 +228,7 @@ export function demoTools(
     {
       name: "demo_notes",
       description:
-        "Reads the reader's notes per scene from the Storyboard tab, with each scene's review status (pending, approved, noted). Runs at once. Act on every scene that is 'noted'.",
+        "Reads the notes stored per scene, with each scene's review status (pending, approved, noted). Runs at once. Act on every scene that is 'noted'. New notes come from the chat: the reader's clicks on the timeline quote a moment into the message.",
       inputSchema: objectSchema({ video: VIDEO }, ["video"]),
       call: async (args) => {
         const { scenes, problems } = await store().readScenes(videoArg(args));
@@ -205,23 +244,25 @@ export function demoTools(
     {
       name: "demo_render",
       description:
-        "Renders a video to <video>/out/<lang>.mp4 at 1920x1080 for each language in its brief, and keeps it as the next version (out/v<N>/, with what changed since the version before; the viewer lists it): voices every scene (cached by text and voice), records each scene in Demo studio's own headless browser, zooms toward each click, burns in subtitles, joins the scenes and mixes in the narration. redo 'all' (default) records every scene again; redo 'noted' records only the scenes the reader left notes on. Always uses the Edge draft voices: Final voice (ElevenLabs, which spends the reader's characters) is the reader's own checkbox on the Video tab. Waits until it ends; only one render runs at a time. Changes only the video's own audio, takes and out folders.",
+        "Renders a video to <video>/out/<lang>.mp4 at 1920x1080 for each language in its brief, and keeps it as the next version (out/v<N>/, with what changed since the version before; the viewer lists it): voices every scene (cached by text and voice), records each scene in Demo studio's own headless browser, zooms toward each click, burns in subtitles, joins the scenes and mixes in the narration. redo 'all' (default) records every scene again; redo 'noted' records only the scenes the reader left notes on. voice 'draft' (default) speaks with the Edge voices; 'final' with ElevenLabs, which spends the reader's characters: pass it only when the reader asked for the final or published voice, and it needs the ElevenLabs key and voice id in the settings. The version records which voice it used, and the viewer shows it. Waits until it ends; only one render runs at a time. Changes only the video's own audio, takes and out folders.",
       inputSchema: objectSchema(
         {
           video: VIDEO,
           redo: { type: "string", enum: ["all", "noted"] },
+          voice: VOICE,
         },
         ["video"],
       ),
       call: async (args, ctx) => {
         const video = videoArg(args);
         await store().entry(video);
+        const final = voiceArg(args);
         // Before the wait, so the viewer shows "Rendering…" while it runs.
         const note = views().ensure(ctx.session, video);
         const answer = renderText(
           await render().runAndWait(video, {
             redo: args["redo"] === "noted" ? "noted" : "all",
-            final: false,
+            final,
           }),
         );
         return withNote(answer, note);
@@ -230,7 +271,7 @@ export function demoTools(
     {
       name: "demo_dry_run",
       description:
-        "Dry-runs a video's script: opens every scene's harness page (built from the product's own mockup harness at its checkout's HEAD commit, or at the scene's ref, in a throwaway worktree) in Demo studio's own headless browser, performs each step (click, hover, type, scroll, wait-for; zoom-hint only records its target), checks every target exists, is visible and that each click lands on it, and takes one still per scene for the Storyboard. Answers with one line, '5 of 5 scenes, every click landed', or the scene, step and selector that failed, then each scene. Waits until it ends (a first build takes about half a minute); only one dry run runs at a time. Changes only the video's own stills.",
+        "Dry-runs a video's script: opens every scene's harness page (built from the product's own mockup harness at its checkout's HEAD commit, or at the scene's ref, in a throwaway worktree) in Demo studio's own headless browser, performs each step (click, hover, type, scroll, wait-for; zoom-hint only records its target), checks every target exists, is visible and that each click lands on it, and takes one still per scene for the timeline. Answers with one line, '5 of 5 scenes, every click landed', or the scene, step and selector that failed, then each scene. Waits until it ends (a first build takes about half a minute); only one dry run runs at a time. Changes only the video's own stills.",
       inputSchema: objectSchema({ video: VIDEO }, ["video"]),
       call: async (args, ctx) => {
         const video = videoArg(args);
@@ -248,6 +289,75 @@ export function demoTools(
         const video = videoArg(args);
         const { title } = await store().entry(video);
         return `Video ${video} (${title}). ${views().open(ctx.session, video)}`;
+      },
+    },
+    ...voiceTools(store, render, reference),
+  ];
+}
+
+/** The tools about the narration's voice: samples to pick by ear, and the reader's own voice as a reference. */
+function voiceTools(
+  store: () => Store,
+  render: () => RenderService,
+  reference: () => (pick: "auto" | string[]) => Promise<string>,
+): ExtensionTool[] {
+  return [
+    {
+      name: "demo_voice_samples",
+      description:
+        "Speaks a short line in three voices and answers with the absolute paths of the three MP3 files, and which voice (and model) each one is: link them in the reply so the reader can listen and pick. voice 'draft' (default) gives three Edge voices of the language, the one set in the settings first; 'final' gives the configured ElevenLabs voice and two others of the reader's account, and spends a few of their characters. video (optional) takes the line from its script, else a stock line is used; language defaults to the video's first language, else en. Writes only the samples folder.",
+      inputSchema: objectSchema(
+        {
+          video: VIDEO,
+          language: { type: "string", enum: [...LANGUAGES] },
+          voice: VOICE,
+        },
+        [],
+      ),
+      call: async (args) => {
+        const final = voiceArg(args);
+        const video = typeof args["video"] === "string" ? args["video"].trim() : "";
+        const asked = LANGUAGES.find((each) => each === args["language"]);
+        if (args["language"] !== undefined && asked === undefined)
+          throw new Error("language must be sv or en");
+        const language =
+          asked ??
+          (video === "" ? undefined : (await store().readBrief(video)).languages[0]) ??
+          "en";
+        const made = await render().voiceSamples({
+          ...(video === "" ? {} : { video }),
+          language,
+          final,
+        });
+        return samplesText(made.text, language, final, made.samples);
+      },
+    },
+    {
+      name: "demo_voice_reference",
+      description:
+        "Builds reference.wav, about 20 seconds of the reader's own clear speech, for the voice conversion step (not built yet). Finds the recordings in the settings' 'Your voice reference folder', else (when 'Use my dictation recordings' is on) in the dictation recordings prifly keeps. pick 'auto' (default) ranks the pieces by clarity (2 to 12 s long, not too quiet, no clipping, few pauses) and joins the best up to about 20-25 s; pick a list of piece ids joins exactly those, in that order. Answers with each chosen piece's id, text, length and mean dB, the total length, the output path and a few runner-up ids to offer as swaps; show the pieces as a small table. Without recordings it says how to get some. Mono 16-bit at 48 kHz. Writes only the extension's own voice folder.",
+      inputSchema: objectSchema(
+        {
+          pick: {
+            oneOf: [
+              { type: "string", enum: ["auto"] },
+              { type: "array", items: { type: "string" } },
+            ],
+            description:
+              "'auto', or the ids of the pieces to use, as an earlier answer listed them.",
+          },
+        },
+        [],
+      ),
+      call: async (args) => {
+        const pick = args["pick"] ?? "auto";
+        if (
+          pick !== "auto" &&
+          !(Array.isArray(pick) && pick.every((id) => typeof id === "string"))
+        ) {
+          throw new Error('pick must be "auto" or a list of piece ids');
+        }
+        return await reference()(pick as "auto" | string[]);
       },
     },
   ];

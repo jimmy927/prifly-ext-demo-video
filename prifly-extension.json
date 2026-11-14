@@ -5,25 +5,6 @@
   "version": "0.1.0",
   "main": "index.ts",
   "prompt": "prompt.md",
-  "launch": [
-    {
-      "id": "demo",
-      "label": "Demo studio script",
-      "icon": "file-text",
-      "description": "Started by the Demo studio panel's Write the script and Ask Claude to tighten buttons; it lists nothing itself."
-    }
-  ],
-  "panels": [
-    {
-      "id": "studio",
-      "label": "Demo studio",
-      "icon": "file-text",
-      "description": "Brief, script, storyboard and video for product demos",
-      "folder": "panel",
-      "page": "index.html",
-      "media": true
-    }
-  ],
   "sessionViews": [
     {
       "id": "timeline",
@@ -37,7 +18,7 @@
     {
       "id": "elevenLabsKey",
       "label": "ElevenLabs API key",
-      "description": "For the published cut's voice. Kept in this extension's own secrets, never in the vault.",
+      "description": "For the Final narration (demo_render with voice \"final\"). Kept in this extension's own secrets, never in the vault.",
       "type": "secret",
       "default": false
     },
@@ -67,14 +48,14 @@
     {
       "id": "elevenLabsVoiceId",
       "label": "ElevenLabs voice id",
-      "description": "The voice of the Final voice render. Pick one by ear with Voice samples on the Video tab.",
+      "description": "The voice of the Final narration. Ask the session for voice samples (demo_voice_samples) to pick one by ear.",
       "type": "string",
       "default": ""
     },
     {
       "id": "elevenLabsModel",
       "label": "ElevenLabs model",
-      "description": "The model of the Final voice render.",
+      "description": "The model of the Final narration.",
       "type": "string",
       "default": "eleven_multilingual_v2"
     },
@@ -105,6 +86,20 @@
       "description": "On Windows, the WSL distribution that holds the checkouts; empty for the default one.",
       "type": "string",
       "default": ""
+    },
+    {
+      "id": "yourVoiceFolder",
+      "label": "Your voice reference folder",
+      "description": "Your voice: a folder of your own clean recordings to build the voice reference from. Empty uses your dictation recordings when the box below is on.",
+      "type": "string",
+      "default": ""
+    },
+    {
+      "id": "yourVoiceUseDictation",
+      "label": "Use my dictation recordings",
+      "description": "Your voice: lets demo_voice_reference pick clear pieces from the recordings prifly keeps when Settings > Dictation > Keep recordings is on.",
+      "type": "boolean",
+      "default": false
     }
   ]
 }

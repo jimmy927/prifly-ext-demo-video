@@ -1,6 +1,6 @@
 /**
  * Saving a script and reporting on it: shared by the `demo_script_set` tool
- * and the panel's editor, so both give the same timing and the same rule
+ * and the tests, so both give the same timing and the same rule
  * violations.
  */
 

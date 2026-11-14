@@ -33,7 +33,6 @@ export type VideoEntry = {
 };
 
 const INDEX = "videos";
-const SESSIONS = "sessions";
 const SUBFOLDERS = ["stills", "audio", "takes", "out"] as const;
 const ID = /^[a-z0-9][a-z0-9-]{0,63}$/;
 
@@ -49,8 +48,6 @@ export type Store = {
   readScenes(id: string): Promise<{ scenes: Scene[]; problems: ScenesProblem[] }>;
   writeScenes(id: string, raw: unknown): Promise<Scene[]>;
   setReview(id: string, scene: string, status: ReviewStatus, notes?: string[]): Promise<Scene>;
-  sessionOf(id: string): Promise<string | null>;
-  rememberSession(id: string, session: string): Promise<void>;
   folder(id: string): string;
 };
 
@@ -190,15 +187,6 @@ export function createStore(state: ExtensionStateApi | undefined, root: string):
       await writeJson(path, raw);
       await touch(id, {});
       return next;
-    },
-    async sessionOf(id) {
-      return (await state.get<Record<string, string>>(SESSIONS))?.[id] ?? null;
-    },
-    async rememberSession(id, session) {
-      await state.update<Record<string, string>>(SESSIONS, (current) => ({
-        ...(current ?? {}),
-        [id]: session,
-      }));
     },
   };
 }

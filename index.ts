@@ -1,26 +1,19 @@
 /**
  * Demo studio: what prifly imports. `activate` registers the demo_* tools;
- * `panel` answers the panel's `fetch("api/…")`; `launch` gives the prompt of
- * the panel's two session buttons (the page posts `prifly-launch`).
+ * `panel` answers the session view's `fetch("api/…")` (the extension has no
+ * panel of its own: videos are made and reviewed in a session).
  */
 
 import { mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import type {
-  ExtensionApi,
-  Launch,
-  LaunchBoard,
-  LaunchChoice,
-  PanelRequest,
-} from "@prifly/extension-api";
+import type { ExtensionApi, PanelRequest } from "@prifly/extension-api";
 import { launchShell } from "./src/browser";
-import { videosRoot } from "./src/data-dir";
+import { dictationRecordingsDir, videosRoot } from "./src/data-dir";
 import { type DryRunDeps, DryRuns } from "./src/dry-run";
 import { type DryRunService, dryRunService } from "./src/dry-run-service";
 import { repoShell, spawnExec } from "./src/exec";
 import { chooseEncoder, findTools, hostFind } from "./src/ffmpeg";
-import { LAUNCHER, launchFor, parseKey } from "./src/launch";
 import { answerPanel } from "./src/panel-api";
 import type { RenderDeps, RenderResult } from "./src/render-run";
 import { type RenderService, renderService } from "./src/render-service";
@@ -31,16 +24,15 @@ import { PROJECTS } from "./src/sources/projects";
 import { createStore, type Store } from "./src/store";
 import { demoTools } from "./src/tools";
 import { EDGE_VOICES, ELEVENLABS_MODEL, elevenVoices, hostSynth } from "./src/voice";
+import { voiceReference } from "./src/voice-reference";
 
 /**
  * `api.panelMedia` (prifly feature "panel-media", on prifly's prifly-623
  * branch at e3202735): typed here because no released @prifly/extension-api
- * tag (v0.8.0 is the newest) has it yet.
+ * tag (v0.8.0 is the newest) has it yet. Its first argument names a panel or a
+ * session view of the manifest; here only the session view.
  */
-type PanelMediaApi = { panelMedia?: (panelId: string, folder: string) => void };
-
-/** The manifest's panel, which declares `"media": true`. */
-const PANEL = "studio";
+type PanelMediaApi = { panelMedia?: (viewId: string, folder: string) => void };
 
 let api: ExtensionApi | null = null;
 let store: Store | null = null;
@@ -53,7 +45,7 @@ let renders: RenderService | null = null;
 let views: SessionViews | null = null;
 let depsOverride: ((videoFolder: string) => DryRunDeps) | null = null;
 let renderOverride: ((videoFolder: string) => RenderDeps) | null = null;
-/** Whether the host took the videos root as the panel's media folder. */
+/** Whether the host took the videos root as the session view's media folder. */
 let mediaServed = false;
 
 /** The store, made on first use so a prifly without `api.state` fails with its reason, not at start. */
@@ -88,7 +80,7 @@ function realDeps(videoFolder: string): DryRunDeps {
   };
 }
 
-function currentDryRuns(): DryRunService {
+export function currentDryRuns(): DryRunService {
   dryRuns ??= dryRunService(currentStore, runs, (folder) => (depsOverride ?? realDeps)(folder));
   return dryRuns;
 }
@@ -117,7 +109,7 @@ function realRenderDeps(videoFolder: string): RenderDeps {
   };
 }
 
-function currentRenders(): RenderService {
+export function currentRenders(): RenderService {
   renders ??= renderService({
     store: currentStore,
     runs: renderRuns,
@@ -148,7 +140,23 @@ function currentViews(): SessionViews {
   return views;
 }
 
-/** Names the videos root as the panel's media folder, where the host can serve it. */
+/** demo_voice_reference: the recordings the settings name, joined into `<videos root>/_voice/reference.wav`. */
+function currentReference(): (pick: "auto" | string[]) => Promise<string> {
+  return async (pick) => {
+    const deps: RenderDeps = (renderOverride ?? realRenderDeps)(currentStore().root);
+    return await voiceReference(
+      { exec: deps.exec, tools: deps.tools, outDir: join(currentStore().root, "_voice") },
+      {
+        folder: setting("yourVoiceFolder", ""),
+        useDictation: api?.settings?.["yourVoiceUseDictation"] === true,
+        dictationDir: dictationRecordingsDir(),
+      },
+      pick,
+    );
+  };
+}
+
+/** Names the videos root as the session view's media folder, where the host can serve it. */
 function serveMedia(given: ExtensionApi): void {
   mediaServed = false;
   const panelMedia = (given as ExtensionApi & PanelMediaApi).panelMedia;
@@ -156,15 +164,8 @@ function serveMedia(given: ExtensionApi): void {
   try {
     const root = videosRoot();
     mkdirSync(root, { recursive: true });
-    panelMedia.call(given, PANEL, root);
+    panelMedia.call(given, TIMELINE_VIEW, root);
     mediaServed = true;
-  } catch (caught) {
-    given.log("panel media not served", { error: String(caught) });
-    return;
-  }
-  try {
-    // The session view is named like a panel; a manifest without it makes the host refuse.
-    (given as ExtensionApi & PanelMediaApi).panelMedia?.call(given, TIMELINE_VIEW, videosRoot());
   } catch (caught) {
     given.log("session view media not served", { error: String(caught) });
   }
@@ -177,8 +178,10 @@ export function activate(given: ExtensionApi): () => void {
   renders = null;
   views = null;
   serveMedia(given);
-  given.tools?.register(demoTools(currentStore, currentDryRuns, currentRenders, currentViews));
-  given.log("activated", { tools: 9, media: mediaServed });
+  given.tools?.register(
+    demoTools(currentStore, currentDryRuns, currentRenders, currentViews, currentReference),
+  );
+  given.log("activated", { tools: 11, media: mediaServed });
   return () => {
     api = null;
     store = null;
@@ -189,33 +192,11 @@ export function activate(given: ExtensionApi): () => void {
   };
 }
 
-export async function panel(panelId: string, request: PanelRequest): Promise<unknown> {
+/** The session view's requests (`panel(viewId, …)` is what the host calls for a session view too). */
+export async function panel(viewId: string, request: PanelRequest): Promise<unknown> {
   return await answerPanel(
-    {
-      store: currentStore,
-      settings: () => api?.settings,
-      features: () => api?.features ?? [],
-      dryRun: currentDryRuns,
-      render: currentRenders,
-      media: () => mediaServed,
-    },
+    { store: currentStore, render: currentRenders, media: () => mediaServed },
     request,
-    panelId,
+    viewId,
   );
-}
-
-/** The launcher lists nothing: it exists for the panel's buttons. */
-export function choices(_launchId: string, _query: string): LaunchChoice[] | LaunchBoard {
-  return [];
-}
-
-export async function launch(launchId: string, key: string): Promise<Launch> {
-  if (launchId !== LAUNCHER) throw new Error(`No launcher ${launchId}`);
-  return await launchFor(currentStore(), key);
-}
-
-/** Remembers which session a video's button started, so the panel can open it. */
-export async function launched(launchId: string, key: string, sessionId: string): Promise<void> {
-  if (launchId !== LAUNCHER) return;
-  await currentStore().rememberSession(parseKey(key).video, sessionId);
 }

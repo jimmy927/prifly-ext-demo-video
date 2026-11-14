@@ -146,7 +146,8 @@ test("three sample voices, the configured one first; each spoken once then cache
   const first = await samples(deps.synth, dir, "Hi", choices);
   await samples(deps.synth, dir, "Hi", choices);
   expect(spoken).toHaveLength(1);
-  expect(first[0]?.dataUrl.startsWith("data:audio/mpeg;base64,")).toBe(true);
+  expect(first[0]?.file.endsWith(".mp3")).toBe(true);
+  expect(await Bun.file(first[0]?.file ?? "").exists()).toBe(true);
 });
 
 const finding = (over: Partial<FindOptions>): FindOptions => ({

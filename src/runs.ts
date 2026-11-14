@@ -1,7 +1,7 @@
 /**
  * One background job at a time (a dry run, a render): `start` answers at
  * once, either that the job started or which video's job is already going.
- * The panel polls `status`. A job that throws keeps its error, by video,
+ * The session view polls `status`. A job that throws keeps its error, by video,
  * until that video's next start.
  */
 

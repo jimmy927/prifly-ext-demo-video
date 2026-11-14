@@ -70,6 +70,14 @@ h2 {
   border: 1px solid var(--border);
   color: var(--muted-fg);
 }
+.voice {
+  margin: -2px 0 0;
+  font-size: 12px;
+  color: var(--muted-fg);
+}
+.voice:empty {
+  display: none;
+}
 .langs {
   margin-left: auto;
   display: flex;

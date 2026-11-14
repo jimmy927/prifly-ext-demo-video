@@ -236,7 +236,15 @@ export const SAMPLE_TEXT: Readonly<Record<Language, string>> = {
   en: "When a role stops getting candidates, Artemis explains why and suggests what to change.",
 };
 
-export type Sample = { voice: string; label: string; dataUrl: string };
+export type Sample = {
+  voice: string;
+  label: string;
+  /** The MP3, absolute. */
+  file: string;
+  engine: VoiceChoice["engine"];
+  /** The ElevenLabs model; Edge has none. */
+  model?: string;
+};
 
 /** Three Edge voices of the language, the configured one first. */
 export function edgeSampleVoices(language: Language, configured: string): string[] {
@@ -244,7 +252,7 @@ export function edgeSampleVoices(language: Language, configured: string): string
   return [configured, ...others].slice(0, 3);
 }
 
-/** Speaks `text` in each voice; cached by text and voice in `cacheDir`. */
+/** Speaks `text` in each voice into `cacheDir`, one MP3 each, cached by text and voice. */
 export async function samples(
   synth: Synth,
   cacheDir: string,
@@ -255,16 +263,17 @@ export async function samples(
   const out: Sample[] = [];
   for (const { choice, label } of choices) {
     const file = join(cacheDir, `${voiceKey(text, choice)}.mp3`);
-    let bytes: Uint8Array;
-    if (await Bun.file(file).exists()) bytes = new Uint8Array(await readFile(file));
-    else {
-      bytes = await synth(text, choice);
+    if (!(await Bun.file(file).exists())) {
+      const bytes = await synth(text, choice);
+      if (bytes.length === 0) throw new Error(`The voice gave no audio for ${label}`);
       await writeFile(file, bytes);
     }
     out.push({
       voice: choice.voice,
       label,
-      dataUrl: `data:audio/mpeg;base64,${Buffer.from(bytes).toString("base64")}`,
+      file,
+      engine: choice.engine,
+      ...(choice.engine === "elevenlabs" ? { model: choice.model } : {}),
     });
   }
   return out;

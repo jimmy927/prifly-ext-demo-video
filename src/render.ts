@@ -82,7 +82,7 @@ export type RenderPlan = {
   final: { argv: string[]; partial: string; output: string; durationMs: number };
   /** The players' WebM of `final.output`; written to `partial`, then moved to `output`. */
   preview: { argv: string[]; partial: string; output: string };
-  /** Each scene's place in the video, for the Video tab's timeline. */
+  /** Each scene's place in the video, for the viewer's timeline. */
   timeline: { id: string; startMs: number; durationMs: number }[];
 };
 

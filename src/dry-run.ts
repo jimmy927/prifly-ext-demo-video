@@ -6,7 +6,7 @@
  * scene saved as `stills/<scene-id>.png`. Its answer is one line: "5 of 5
  * scenes, every click landed", or the scene, step and selector that failed.
  *
- * `DryRuns` runs one at a time in the background, with progress the panel
+ * `DryRuns` runs one at a time in the background, with progress the session view
  * polls; the result is kept in `stills/dry-run.json`.
  */
 
@@ -209,7 +209,7 @@ export async function runScene(deps: SceneRunDeps, scene: Scene): Promise<SceneR
   return result;
 }
 
-/** The one line the panel and the tool show. */
+/** The one line the tool shows. */
 export function summarize(results: readonly SceneResult[]): string {
   const total = results.length;
   if (total === 0) return "No scenes to dry-run. Write the script first.";
@@ -295,6 +295,6 @@ export type DryRunStatus = RunStatus;
 
 /**
  * One dry run at a time, in the background. `start` answers at once: the run
- * started, or which video's run is already going. The panel polls `status`.
+ * started, or which video's run is already going. The session view polls `status`.
  */
 export class DryRuns extends BackgroundRuns<DryRunResult> {}

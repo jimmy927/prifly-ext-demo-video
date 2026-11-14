@@ -111,7 +111,7 @@ export function houseViolations(scenes: readonly Scene[]): Violation[] {
   return found;
 }
 
-/** The lines `demo_script_set` and the panel show for one language. */
+/** The lines `demo_script_set` shows for one language. */
 export function timingLine(timing: LanguageTiming, targetSeconds: number): string {
   const head = `${timing.language}: ${timing.words} words, about ${timing.seconds} s of ${targetSeconds} s (${Math.round(timing.share * 100)} %)`;
   if (timing.headroom === "over") {

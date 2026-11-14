@@ -3,7 +3,7 @@
  * polls: `api/state`, answered from `panel("timeline", …)`. The page asks
  * with `?etag=<the last one>` and gets `{ unchanged: true }` while nothing
  * moved, since the host's answer carries no headers of its own. Every media
- * path is already a `media/<video>/…` URL under the panel's media route.
+ * path is already a `media/<video>/…` URL under the session view's media route.
  */
 
 import { createHash } from "node:crypto";
@@ -13,7 +13,7 @@ import type { PanelRequest } from "@prifly/extension-api";
 import type { PanelContext } from "./panel-api";
 import type { Cue } from "./render";
 import type { Language, Scene } from "./scenes";
-import { latestVersion, readVersion, versionNumbers } from "./versions";
+import { latestVersion, readVersion, versionNumbers, voiceLabel } from "./versions";
 
 /** The request of a session view: `panel()` passes on the session and the params `showSessionView` gave. */
 export type ViewRequest = PanelRequest & {
@@ -26,7 +26,7 @@ type PerLanguage<T> = Partial<Record<Language, T>>;
 export type TimelineScene = {
   id: string;
   title: string;
-  /** The Storyboard's still of the scene; null before a dry run. */
+  /** The still of the scene (from the dry run); null before a dry run. */
   still: string | null;
   narration: Scene["narration"];
 };
@@ -49,6 +49,8 @@ export type TimelineVersion = {
   durationMs: number;
   first: boolean;
   changes: string[];
+  /** The narration it was made with, as the header says it ("Draft (Edge, en-GB-SoniaNeural)"); null for a version made before it was recorded. */
+  voice: string | null;
   /**
    * Per language, what the player loads: the WebM, since prifly's CEF plays
    * no H.264, or the MP4 of a version made before it; empty without the media route.
@@ -103,6 +105,7 @@ async function versionsOf(context: PanelContext, id: string): Promise<TimelineVe
       durationMs: info.durationMs,
       first: info.first,
       changes: info.changes,
+      voice: info.voice === undefined ? null : voiceLabel(info.voice),
       files: media
         ? Object.fromEntries(
             Object.entries({ ...info.files, ...info.previews }).map(([lang, path]) => [
