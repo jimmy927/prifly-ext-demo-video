@@ -42,16 +42,19 @@ export type VersionInfo = {
 
 /** Which narration a version was made with: Draft (Edge) or Final (ElevenLabs), and the voice per language. */
 export type VersionVoice = {
-  mode: "draft" | "final";
-  engine: "edge" | "elevenlabs";
+  mode: "draft" | "final" | "mine-elevenlabs";
+  engine: "edge" | "elevenlabs" | "elevenlabs-sts";
   /** The voice (Edge name or ElevenLabs id) each language was spoken in. */
   voices: Partial<Record<Language, string>>;
   model?: string;
+  /** Mine (ElevenLabs): the Edge voice that read each language before the voice change. */
+  source?: Partial<Record<Language, string>>;
 };
 
 /** The viewer's line for a version's narration, without the "Voice: " in front. */
 export function voiceLabel(voice: VersionVoice): string {
   if (voice.mode === "final") return "Final (ElevenLabs)";
+  if (voice.mode === "mine-elevenlabs") return "Mine (ElevenLabs)";
   const names = [...new Set(Object.values(voice.voices))];
   return names.length === 0 ? "Draft (Edge)" : `Draft (Edge, ${names.join(", ")})`;
 }

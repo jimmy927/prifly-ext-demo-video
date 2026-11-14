@@ -80,7 +80,7 @@ const ROUTES: Record<string, Route> = {
       ? await extension.currentRenders().view(id)
       : await extension.currentRenders().start(text(body, "id"), {
           redo: (body["redo"] as "all" | "noted" | undefined) ?? "all",
-          final: false,
+          voice: "draft",
         }),
 };
 

@@ -8,7 +8,7 @@
 
 import type { ExtensionTool } from "@prifly/extension-api";
 import { type DryRunService, dryRunText } from "./dry-run-service";
-import { type RenderService, renderText } from "./render-service";
+import { type RenderService, type RenderVoice, renderText } from "./render-service";
 import { type Brief, LANGUAGES, PRODUCTS } from "./scenes";
 import { reportText, saveScript } from "./script";
 import type { SessionViews } from "./session-views";
@@ -51,6 +51,19 @@ function voiceArg(args: Record<string, unknown>): boolean {
   if (voice === "final") return true;
   throw new Error('voice must be "draft" or "final"');
 }
+
+/** demo_render's narration: the three voices. */
+function renderVoiceArg(args: Record<string, unknown>): RenderVoice {
+  if (args["voice"] === "mine-elevenlabs") return "mine-elevenlabs";
+  return voiceArg(args) ? "final" : "draft";
+}
+
+const RENDER_VOICE = {
+  type: "string",
+  enum: ["draft", "final", "mine-elevenlabs"],
+  description:
+    "Draft (default): Edge voices, free. Final: ElevenLabs, which spends the reader's characters; use it only when the reader asked for the final or published voice. mine-elevenlabs: the reader's own voice through ElevenLabs, the no-GPU option; spends ElevenLabs credits per minute of audio, and needs reference.wav (demo_voice_reference) first.",
+};
 
 const VOICE = {
   type: "string",
@@ -148,6 +161,7 @@ export function demoTools(
   render: () => RenderService,
   views: () => SessionViews,
   reference: () => (pick: "auto" | string[]) => Promise<string>,
+  cloneDelete: () => Promise<string>,
 ): ExtensionTool[] {
   return [
     {
@@ -244,25 +258,25 @@ export function demoTools(
     {
       name: "demo_render",
       description:
-        "Renders a video to <video>/out/<lang>.mp4 at 1920x1080 for each language in its brief, and keeps it as the next version (out/v<N>/, with what changed since the version before; the viewer lists it): voices every scene (cached by text and voice), records each scene in Demo studio's own headless browser, zooms toward each click, burns in subtitles, joins the scenes and mixes in the narration. redo 'all' (default) records every scene again; redo 'noted' records only the scenes the reader left notes on. voice 'draft' (default) speaks with the Edge voices; 'final' with ElevenLabs, which spends the reader's characters: pass it only when the reader asked for the final or published voice, and it needs the ElevenLabs key and voice id in the settings. The version records which voice it used, and the viewer shows it. Waits until it ends; only one render runs at a time. Changes only the video's own audio, takes and out folders.",
+        "Renders a video to <video>/out/<lang>.mp4 at 1920x1080 for each language in its brief, and keeps it as the next version (out/v<N>/, with what changed since the version before; the viewer lists it): voices every scene (cached by text and voice), records each scene in Demo studio's own headless browser, zooms toward each click, burns in subtitles, joins the scenes and mixes in the narration. redo 'all' (default) records every scene again; redo 'noted' records only the scenes the reader left notes on. voice 'draft' (default) speaks with the Edge voices; 'final' with ElevenLabs, which spends the reader's characters: pass it only when the reader asked for the final or published voice, and it needs the ElevenLabs key and voice id in the settings; 'mine-elevenlabs' speaks in the reader's own voice through ElevenLabs, the option for a machine without a GPU (Edge reads each scene, then ElevenLabs' voice changer turns it into a clone of reference.wav): it spends ElevenLabs credits per minute of narration, needs the ElevenLabs key and a reference.wav from demo_voice_reference, and the first time uploads reference.wav to ElevenLabs as an Instant Voice Clone. The version records which voice it used, and the viewer shows it. Waits until it ends; only one render runs at a time. Changes only the video's own audio, takes and out folders.",
       inputSchema: objectSchema(
         {
           video: VIDEO,
           redo: { type: "string", enum: ["all", "noted"] },
-          voice: VOICE,
+          voice: RENDER_VOICE,
         },
         ["video"],
       ),
       call: async (args, ctx) => {
         const video = videoArg(args);
         await store().entry(video);
-        const final = voiceArg(args);
+        const voice = renderVoiceArg(args);
         // Before the wait, so the viewer shows "Rendering…" while it runs.
         const note = views().ensure(ctx.session, video);
         const answer = renderText(
           await render().runAndWait(video, {
             redo: args["redo"] === "noted" ? "noted" : "all",
-            final,
+            voice,
           }),
         );
         return withNote(answer, note);
@@ -292,6 +306,13 @@ export function demoTools(
       },
     },
     ...voiceTools(store, render, reference),
+    {
+      name: "demo_voice_clone_delete",
+      description:
+        "Deletes the Instant Voice Clone of the reader's voice that demo_render with voice 'mine-elevenlabs' made at ElevenLabs, and forgets it here; the next 'mine-elevenlabs' render uploads reference.wav again. Answers with what it deleted. Writes only the extension's own voice folder, and removes the clone at ElevenLabs.",
+      inputSchema: objectSchema({}, []),
+      call: async () => await cloneDelete(),
+    },
   ];
 }
 
