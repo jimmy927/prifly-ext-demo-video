@@ -119,7 +119,10 @@ const service = renderService({
     elevenLabsVoice: "",
     elevenLabsModel: "",
   }),
-  mine: async (languages) => await mineChoices(setup, languages),
+  mineClone: async () => {
+    throw new Error("The cloud voice is not part of this check");
+  },
+  mineLocal: async (languages) => await mineChoices(setup, languages),
   depsFor: () => ({
     exec,
     tools,
@@ -167,7 +170,7 @@ await saveScript(store, video.id, [
 ]);
 
 console.log(`Rendering with voice "mine" (variant ${variant}), reference ${reference}`);
-const answer = await service.runAndWait(video.id, { redo: "all", final: false, mine: true });
+const answer = await service.runAndWait(video.id, { redo: "all", voice: "mine" });
 converter.close();
 console.log(renderText(answer));
 console.log(`Narration: ${join(store.folder(video.id), "audio", "en")}`);

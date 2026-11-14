@@ -81,7 +81,7 @@ test("demo_create refuses a missing title or an unknown product, and keeps the v
   expect(JSON.parse(await s.fake.callTool("demo_list", {}))).toHaveLength(1);
 });
 
-test("activate registers the eleven tools, none of which asks the reader", async () => {
+test("activate registers the twelve tools, none of which asks the reader", async () => {
   const s = studio();
   expect(s.fake.tools().map((tool) => tool.name)).toEqual([
     "demo_list",
@@ -95,6 +95,7 @@ test("activate registers the eleven tools, none of which asks the reader", async
     "demo_open",
     "demo_voice_samples",
     "demo_voice_reference",
+    "demo_voice_clone_delete",
   ]);
   const id = await newVideo(s);
   await s.fake.callTool("demo_brief_set", {

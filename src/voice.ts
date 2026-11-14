@@ -16,6 +16,7 @@ import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { synthesize } from "@jimmy927/edge-tts";
 import type { Language, Scene } from "./scenes";
+import { NO_KEY, type StsChoice, stsSynth } from "./voice-mine-elevenlabs";
 
 /** Bumped when what a voice file holds changes for the same text and voice. */
 const VOICE_VERSION = 1;
@@ -41,7 +42,8 @@ export const ELEVENLABS_MODEL = "eleven_multilingual_v2";
 export type VoiceChoice =
   | { engine: "edge"; voice: string; rate: string }
   | { engine: "elevenlabs"; voice: string; model: string }
-  // The reader's own voice: Edge reads it, Seed-VC converts it (`voice-mine-local.ts`).
+  | StsChoice
+  // The reader's own voice, local: Edge reads it, Seed-VC converts it (`voice-mine-local.ts`).
   | { engine: "seed-vc"; voice: string; rate: string; variant: "a" | "b"; reference: string };
 
 /** Speaks `text`; the MP3's bytes. */
@@ -224,6 +226,11 @@ export function hostSynth(elevenKey: () => Promise<string | null>, fetcher: Fetc
   return async (text, choice) => {
     if (choice.engine === "edge") return await edgeSynth(text, choice.voice, choice.rate);
     if (choice.engine === "seed-vc") throw new Error("Voice 'mine' has no converter here");
+    if (choice.engine === "elevenlabs-sts") {
+      const stsKey = await elevenKey();
+      if (stsKey === null || stsKey === "") throw new Error(NO_KEY);
+      return await stsSynth(fetcher, stsKey, edgeSynth, text, choice);
+    }
     const key = await elevenKey();
     if (key === null || key === "") {
       throw new Error("Final voice needs the ElevenLabs API key: set it in Demo studio's settings");
@@ -276,7 +283,7 @@ export async function samples(
       label,
       file,
       engine: choice.engine,
-      ...(choice.engine === "elevenlabs" ? { model: choice.model } : {}),
+      ...(choice.engine === "edge" || choice.engine === "seed-vc" ? {} : { model: choice.model }),
     });
   }
   return out;

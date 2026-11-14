@@ -23,7 +23,15 @@ import { harnessPage } from "./src/sources/harness";
 import { PROJECTS } from "./src/sources/projects";
 import { createStore, type Store } from "./src/store";
 import { demoTools } from "./src/tools";
-import { EDGE_VOICES, ELEVENLABS_MODEL, edgeSynth, elevenVoices, hostSynth } from "./src/voice";
+import {
+  EDGE_VOICES,
+  ELEVENLABS_MODEL,
+  edgeSynth,
+  elevenVoices,
+  type Fetch,
+  hostSynth,
+} from "./src/voice";
+import { type CloneDeps, deleteClone, ensureClone } from "./src/voice-mine-elevenlabs";
 import {
   type Converter,
   findPython,
@@ -55,6 +63,7 @@ let renders: RenderService | null = null;
 let views: SessionViews | null = null;
 let depsOverride: ((videoFolder: string) => DryRunDeps) | null = null;
 let renderOverride: ((videoFolder: string) => RenderDeps) | null = null;
+let cloneFetch: Fetch | null = null;
 /** Whether the host took the videos root as the session view's media folder. */
 let mediaServed = false;
 
@@ -181,7 +190,8 @@ export function currentRenders(): RenderService {
       elevenLabsModel: setting("elevenLabsModel", ELEVENLABS_MODEL),
     }),
     media: () => mediaServed,
-    mine: async (languages) => await mineChoices(await mineSetup(), languages),
+    mineClone: () => ensureClone(cloneDeps()),
+    mineLocal: async (languages) => await mineChoices(await mineSetup(), languages),
     elevenVoices: async () => {
       const key = await api?.secrets?.get("elevenLabsKey");
       if (key === null || key === undefined || key === "") {
@@ -191,6 +201,20 @@ export function currentRenders(): RenderService {
     },
   });
   return renders;
+}
+
+/** For the tests: a fake ElevenLabs in place of the network for the voice clone; null puts it back. */
+export function useCloneFetch(make: Fetch | null): void {
+  cloneFetch = make;
+}
+
+/** Mine (ElevenLabs): the key from this extension's own secrets, and the folder of reference.wav. */
+function cloneDeps(): CloneDeps {
+  return {
+    fetch: cloneFetch ?? fetch,
+    key: async () => (await api?.secrets?.get("elevenLabsKey")) ?? null,
+    voiceDir: join(currentStore().root, "_voice"),
+  };
 }
 
 /** Which sessions were shown the timeline lives as long as the module does. */
@@ -238,9 +262,11 @@ export function activate(given: ExtensionApi): () => void {
   views = null;
   serveMedia(given);
   given.tools?.register(
-    demoTools(currentStore, currentDryRuns, currentRenders, currentViews, currentReference),
+    demoTools(currentStore, currentDryRuns, currentRenders, currentViews, currentReference, () =>
+      deleteClone(cloneDeps()),
+    ),
   );
-  given.log("activated", { tools: 11, media: mediaServed });
+  given.log("activated", { tools: 12, media: mediaServed });
   return () => {
     converter?.run.close();
     converter = null;

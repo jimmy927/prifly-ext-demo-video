@@ -42,20 +42,23 @@ export type VersionInfo = {
 
 /** Which narration a version was made with: Draft (Edge) or Final (ElevenLabs), and the voice per language. */
 export type VersionVoice = {
-  mode: "draft" | "final" | "mine";
-  engine: "edge" | "elevenlabs" | "seed-vc";
-  /** The voice (Edge name or ElevenLabs id) each language was spoken in; for "mine", the Edge voice that was converted. */
+  mode: "draft" | "final" | "mine" | "mine-elevenlabs";
+  engine: "edge" | "elevenlabs" | "elevenlabs-sts" | "seed-vc";
+  /** The voice (Edge name or ElevenLabs id) each language was spoken in. */
   voices: Partial<Record<Language, string>>;
   model?: string;
-  /** "mine" (Seed-VC): the model variant, A (22 kHz) or B (44 kHz, pitch-matched). */
+  /** Mine (ElevenLabs): the Edge voice that read each language before the voice change. */
+  source?: Partial<Record<Language, string>>;
+  /** Mine (local): the Seed-VC variant, A (22 kHz) or B (44 kHz, pitch-matched); `voices` holds the Edge voice that was converted. */
   variant?: "a" | "b";
-  /** "mine": the hash of the reference.wav the voice was converted to. */
+  /** Mine (local): the hash of the reference.wav the voice was converted to. */
   reference?: string;
 };
 
 /** The viewer's line for a version's narration, without the "Voice: " in front. */
 export function voiceLabel(voice: VersionVoice): string {
   if (voice.mode === "final") return "Final (ElevenLabs)";
+  if (voice.mode === "mine-elevenlabs") return "Mine (ElevenLabs)";
   if (voice.mode === "mine") return "Mine (local Seed-VC)";
   const names = [...new Set(Object.values(voice.voices))];
   return names.length === 0 ? "Draft (Edge)" : `Draft (Edge, ${names.join(", ")})`;

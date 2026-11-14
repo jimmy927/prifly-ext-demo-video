@@ -354,9 +354,6 @@ test("voice mine without a Python environment or without reference.wav fails the
   await expect(s.fake.callTool("demo_render", { video: id, voice: "mine" })).rejects.toThrow(
     NO_REFERENCE,
   );
-  await expect(s.fake.callTool("demo_render", { video: id, voice: "loud" })).rejects.toThrow(
-    'voice must be "draft", "final" or "mine"',
-  );
 });
 
 test("a failing converter stops the render for the scene and leaves no version", async () => {

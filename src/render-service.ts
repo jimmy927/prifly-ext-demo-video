@@ -21,6 +21,7 @@ import {
   type VoiceChoice,
   type VoiceSettings,
 } from "./voice";
+import { mineChoice, uploadedLine } from "./voice-mine-elevenlabs";
 
 export type RenderFile = {
   language: Language;
@@ -39,8 +40,9 @@ export type RenderView = {
   files: RenderFile[];
 };
 
-/** `mine`: the reader's own voice, converted locally (`voice-mine-local.ts`); `final` is false then. */
-export type RenderRequest = { redo: "all" | "noted"; final: boolean; mine?: boolean };
+/** Which narration; "mine" is the reader's own voice converted locally (`voice-mine-local.ts`), "mine-elevenlabs" through ElevenLabs. */
+export type RenderVoice = "draft" | "final" | "mine" | "mine-elevenlabs";
+export type RenderRequest = { redo: "all" | "noted"; voice: RenderVoice };
 
 /** `video`: take the line from its script; left out, a stock line. */
 export type SampleRequest = { video?: string; language: Language; final: boolean };
@@ -60,27 +62,37 @@ export function shortLine(text: string): string {
 /** Under the videos root: the sample files, which belong to no video. */
 export const SAMPLES_FOLDER = "_voice-samples";
 
+const ENGINE: Record<RenderVoice, VersionVoice["engine"]> = {
+  draft: "edge",
+  final: "elevenlabs",
+  mine: "seed-vc",
+  "mine-elevenlabs": "elevenlabs-sts",
+};
+
 /** What a version records about its narration. */
 function versionVoice(
   languages: readonly Language[],
-  final: boolean,
+  mode: RenderVoice,
   choiceOf: (language: Language) => VoiceChoice,
 ): VersionVoice {
   const voices: VersionVoice["voices"] = {};
+  const source: NonNullable<VersionVoice["source"]> = {};
   let model: string | undefined;
-  let mine: Extract<VoiceChoice, { engine: "seed-vc" }> | undefined;
+  let local: { variant: "a" | "b"; reference: string } | undefined;
   for (const language of languages) {
     const choice = choiceOf(language);
     voices[language] = choice.voice;
-    if (choice.engine === "elevenlabs") model = choice.model;
-    if (choice.engine === "seed-vc") mine = choice;
+    if (choice.engine === "seed-vc") local = choice;
+    else if (choice.engine !== "edge") model = choice.model;
+    if (choice.engine === "elevenlabs-sts") source[language] = choice.source;
   }
   return {
-    mode: mine !== undefined ? "mine" : final ? "final" : "draft",
-    engine: mine !== undefined ? "seed-vc" : final ? "elevenlabs" : "edge",
+    mode,
+    engine: ENGINE[mode],
     voices,
     ...(model === undefined ? {} : { model }),
-    ...(mine === undefined ? {} : { variant: mine.variant, reference: mine.reference }),
+    ...(mode === "mine-elevenlabs" ? { source } : {}),
+    ...(local === undefined ? {} : { variant: local.variant, reference: local.reference }),
   };
 }
 
@@ -90,7 +102,13 @@ export type RenderService = {
   runAndWait(
     id: string,
     request: RenderRequest,
-  ): Promise<{ result: RenderResult | null; error: string | null; busyWith: string | null }>;
+  ): Promise<{
+    result: RenderResult | null;
+    error: string | null;
+    busyWith: string | null;
+    /** Mine (ElevenLabs): said once, when this call uploaded reference.wav as a new clone. */
+    uploaded?: string;
+  }>;
   /** Three voices of a language saying a line of the video (or a stock line), the configured one first, as MP3 files. */
   voiceSamples(request: SampleRequest): Promise<{ text: string; samples: Sample[] }>;
 };
@@ -104,8 +122,10 @@ export type RenderServiceContext = {
   media: () => boolean;
   /** For ElevenLabs samples: the account's other voices. */
   elevenVoices: () => Promise<{ id: string; name: string }[]>;
-  /** voice "mine": the choice per language, or a one-line error (no reference, no Python); `voice-mine-local.ts`. */
-  mine?: (languages: readonly Language[]) => Promise<Record<Language, VoiceChoice>>;
+  /** For "mine-elevenlabs": the clone of reference.wav, made when it is new or the file changed. */
+  mineClone: () => Promise<{ voiceId: string; created: boolean; replaced: boolean }>;
+  /** For "mine": the Seed-VC choice per language, or a one-line error (no reference, no Python); `voice-mine-local.ts`. */
+  mineLocal?: (languages: readonly Language[]) => Promise<Record<Language, VoiceChoice>>;
 };
 
 export function renderService(context: RenderServiceContext): RenderService {
@@ -135,18 +155,26 @@ export function renderService(context: RenderServiceContext): RenderService {
     const [brief, read] = await Promise.all([store().readBrief(id), store().readScenes(id)]);
     const folder = store().folder(id);
     const voices = context.voices();
-    if (request.mine === true && context.mine === undefined) {
+    // Before the run starts: no key or reference.wav, or a refused clone, fails the call, not the render.
+    const clone = request.voice === "mine-elevenlabs" ? await context.mineClone() : null;
+    if (request.voice === "mine" && context.mineLocal === undefined) {
       throw new Error("Voice 'mine' is not available here");
     }
-    const mineChoices =
-      request.mine === true && context.mine !== undefined
-        ? await context.mine(brief.languages)
+    const local =
+      request.voice === "mine" && context.mineLocal !== undefined
+        ? await context.mineLocal(brief.languages)
         : null;
-    const choiceOf = (language: Language): VoiceChoice =>
-      mineChoices !== null ? mineChoices[language] : choiceFor(voices, language, request.final);
-    // Before the run starts: a Final voice with no ElevenLabs voice id fails the call, not the render.
-    const voice = versionVoice(brief.languages, request.final, choiceOf);
-    return runs.start(id, async (onProgress) => {
+    const choiceOf = (language: Language): VoiceChoice => {
+      if (local !== null) return local[language];
+      return clone === null
+        ? choiceFor(voices, language, request.voice === "final")
+        : mineChoice(voices, language, clone.voiceId);
+    };
+    // Likewise a Final voice with no ElevenLabs voice id fails the call.
+    const voice = versionVoice(brief.languages, request.voice, choiceOf);
+    const uploaded =
+      clone?.created === true ? { uploaded: uploadedLine(clone.voiceId, clone.replaced) } : {};
+    const run = runs.start(id, async (onProgress) => {
       const version = await nextVersion(folder);
       try {
         const result = await renderVideo(
@@ -156,7 +184,7 @@ export function renderService(context: RenderServiceContext): RenderService {
           {
             languages: brief.languages,
             redo: request.redo,
-            final: request.final,
+            final: request.voice === "final",
             choiceOf,
             version,
           },
@@ -169,7 +197,10 @@ export function renderService(context: RenderServiceContext): RenderService {
         throw caught;
       }
     });
+    return { ...run, ...uploaded };
   };
+  const uploaded = (started: { uploaded?: string }) =>
+    started.uploaded === undefined ? {} : { uploaded: started.uploaded };
   const pending = new Map<string, Promise<RenderResult | null>>();
   return {
     view,
@@ -184,11 +215,12 @@ export function renderService(context: RenderServiceContext): RenderService {
       const started = await begin(id, request);
       if (started.started) {
         pending.set(id, started.done);
-        return { result: await started.done, error: runs.errorOf(id), busyWith: null };
+        const result = await started.done;
+        return { result, error: runs.errorOf(id), busyWith: null, ...uploaded(started) };
       }
       const same = started.running === id ? pending.get(id) : undefined;
       if (same === undefined) return { result: null, error: null, busyWith: started.running };
-      return { result: await same, error: runs.errorOf(id), busyWith: null };
+      return { result: await same, error: runs.errorOf(id), busyWith: null, ...uploaded(started) };
     },
     async voiceSamples({ video, language, final }) {
       let line = SAMPLE_TEXT[language];
@@ -234,6 +266,7 @@ export function renderText(answer: Awaited<ReturnType<RenderService["runAndWait"
   }
   if (answer.result === null) return `The render stopped: ${answer.error ?? "no answer"}`;
   const lines = [`Rendered. ${answer.result.summary}`];
+  if (answer.uploaded !== undefined) lines.push(answer.uploaded);
   for (const out of answer.result.outputs) {
     lines.push(`- ${out.language}: ${out.file} (${(out.durationMs / 1000).toFixed(1)} s)`);
   }
