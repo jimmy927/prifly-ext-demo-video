@@ -142,7 +142,7 @@ test("auto ranks by clarity, skips the unusable, joins about 20 s and lists runn
   const made = await seconds(reference);
   expect(made.seconds).toBeCloseTo(21, 0);
   expect({ rate: made.rate, channels: made.channels }).toEqual({ rate: 48000, channels: 1 });
-  expect(answer).toContain("which is not built yet");
+  expect(answer).toContain('demo_render with voice "mine"');
   // The pieces only exist at 16 kHz: the answer says they were resampled.
   expect(answer).toContain("3 of 3 pieces only exist at a lower rate");
   expect(JSON.parse(readFileSync(join(outDir, "reference.json"), "utf8")).pieces).toHaveLength(3);

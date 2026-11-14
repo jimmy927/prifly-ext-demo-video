@@ -40,7 +40,9 @@ export const ELEVENLABS_MODEL = "eleven_multilingual_v2";
 
 export type VoiceChoice =
   | { engine: "edge"; voice: string; rate: string }
-  | { engine: "elevenlabs"; voice: string; model: string };
+  | { engine: "elevenlabs"; voice: string; model: string }
+  // The reader's own voice: Edge reads it, Seed-VC converts it (`voice-mine-local.ts`).
+  | { engine: "seed-vc"; voice: string; rate: string; variant: "a" | "b"; reference: string };
 
 /** Speaks `text`; the MP3's bytes. */
 export type Synth = (text: string, choice: VoiceChoice) => Promise<Uint8Array>;
@@ -221,6 +223,7 @@ export function choiceFor(
 export function hostSynth(elevenKey: () => Promise<string | null>, fetcher: Fetch = fetch): Synth {
   return async (text, choice) => {
     if (choice.engine === "edge") return await edgeSynth(text, choice.voice, choice.rate);
+    if (choice.engine === "seed-vc") throw new Error("Voice 'mine' has no converter here");
     const key = await elevenKey();
     if (key === null || key === "") {
       throw new Error("Final voice needs the ElevenLabs API key: set it in Demo studio's settings");

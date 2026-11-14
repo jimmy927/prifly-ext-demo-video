@@ -39,7 +39,8 @@ export type RenderView = {
   files: RenderFile[];
 };
 
-export type RenderRequest = { redo: "all" | "noted"; final: boolean };
+/** `mine`: the reader's own voice, converted locally (`voice-mine-local.ts`); `final` is false then. */
+export type RenderRequest = { redo: "all" | "noted"; final: boolean; mine?: boolean };
 
 /** `video`: take the line from its script; left out, a stock line. */
 export type SampleRequest = { video?: string; language: Language; final: boolean };
@@ -67,16 +68,19 @@ function versionVoice(
 ): VersionVoice {
   const voices: VersionVoice["voices"] = {};
   let model: string | undefined;
+  let mine: Extract<VoiceChoice, { engine: "seed-vc" }> | undefined;
   for (const language of languages) {
     const choice = choiceOf(language);
     voices[language] = choice.voice;
     if (choice.engine === "elevenlabs") model = choice.model;
+    if (choice.engine === "seed-vc") mine = choice;
   }
   return {
-    mode: final ? "final" : "draft",
-    engine: final ? "elevenlabs" : "edge",
+    mode: mine !== undefined ? "mine" : final ? "final" : "draft",
+    engine: mine !== undefined ? "seed-vc" : final ? "elevenlabs" : "edge",
     voices,
     ...(model === undefined ? {} : { model }),
+    ...(mine === undefined ? {} : { variant: mine.variant, reference: mine.reference }),
   };
 }
 
@@ -100,6 +104,8 @@ export type RenderServiceContext = {
   media: () => boolean;
   /** For ElevenLabs samples: the account's other voices. */
   elevenVoices: () => Promise<{ id: string; name: string }[]>;
+  /** voice "mine": the choice per language, or a one-line error (no reference, no Python); `voice-mine-local.ts`. */
+  mine?: (languages: readonly Language[]) => Promise<Record<Language, VoiceChoice>>;
 };
 
 export function renderService(context: RenderServiceContext): RenderService {
@@ -129,8 +135,15 @@ export function renderService(context: RenderServiceContext): RenderService {
     const [brief, read] = await Promise.all([store().readBrief(id), store().readScenes(id)]);
     const folder = store().folder(id);
     const voices = context.voices();
+    if (request.mine === true && context.mine === undefined) {
+      throw new Error("Voice 'mine' is not available here");
+    }
+    const mineChoices =
+      request.mine === true && context.mine !== undefined
+        ? await context.mine(brief.languages)
+        : null;
     const choiceOf = (language: Language): VoiceChoice =>
-      choiceFor(voices, language, request.final);
+      mineChoices !== null ? mineChoices[language] : choiceFor(voices, language, request.final);
     // Before the run starts: a Final voice with no ElevenLabs voice id fails the call, not the render.
     const voice = versionVoice(brief.languages, request.final, choiceOf);
     return runs.start(id, async (onProgress) => {

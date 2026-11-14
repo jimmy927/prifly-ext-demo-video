@@ -351,7 +351,10 @@ function answerText(
     );
   }
   if (note !== "") lines.push("", note);
-  lines.push("", "The reference is ready for the voice conversion step, which is not built yet.");
+  lines.push(
+    "",
+    'The reference is ready: demo_render with voice "mine" converts the narration to it.',
+  );
   return lines.join("\n");
 }
 

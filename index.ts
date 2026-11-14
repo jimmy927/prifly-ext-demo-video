@@ -23,8 +23,18 @@ import { harnessPage } from "./src/sources/harness";
 import { PROJECTS } from "./src/sources/projects";
 import { createStore, type Store } from "./src/store";
 import { demoTools } from "./src/tools";
-import { EDGE_VOICES, ELEVENLABS_MODEL, elevenVoices, hostSynth } from "./src/voice";
-import { voiceReference } from "./src/voice-reference";
+import { EDGE_VOICES, ELEVENLABS_MODEL, edgeSynth, elevenVoices, hostSynth } from "./src/voice";
+import {
+  type Converter,
+  findPython,
+  type MineSetup,
+  mineChoices,
+  mineSynth,
+  pythonConverter,
+  variantOf,
+  withMine,
+} from "./src/voice-mine-local";
+import { REFERENCE_FILE, voiceReference } from "./src/voice-reference";
 
 /**
  * `api.panelMedia` (prifly feature "panel-media", on prifly's prifly-623
@@ -95,14 +105,62 @@ export function useRenderDeps(make: ((videoFolder: string) => RenderDeps) | null
   renderOverride = make;
 }
 
+/** Seed-VC's own folder (its source, checkpoints and Hugging Face cache): in the extension's data, never in the user's home caches. */
+const seedVcHome = () => join(currentStore().root, "_seed-vc");
+/** `reference.wav`, where demo_voice_reference builds it. */
+const referenceFile = () => join(currentStore().root, "_voice", REFERENCE_FILE);
+
+/** The converter of voice "mine": one Python process per render, started at its first scene. */
+let converter: { python: string; run: Converter } | null = null;
+
+async function mineSetup(): Promise<MineSetup> {
+  const python = await findPython(api?.paths ?? [], process.platform, (path) =>
+    Bun.file(path).exists(),
+  );
+  if (python !== null && converter?.python !== python) {
+    converter?.run.close();
+    converter = {
+      python,
+      run: pythonConverter({
+        python,
+        script: join(api?.folder ?? "", "python", "convert.py"),
+        home: seedVcHome(),
+      }),
+    };
+  }
+  return {
+    edgeEn: setting("voiceEn", EDGE_VOICES.en[0] as string),
+    variant: variantOf(setting("mineVariant", "B")),
+    referenceFile: referenceFile(),
+    python,
+  };
+}
+
 /** The host's ffmpeg, the voices and the dry run's browser and harness build. */
 function realRenderDeps(videoFolder: string): RenderDeps {
   const browser = (depsOverride ?? realDeps)(videoFolder);
+  const tools = () => findTools(hostFind(setting("ffmpegPath", "")));
   return {
     exec: spawnExec,
-    tools: () => findTools(hostFind(setting("ffmpegPath", ""))),
+    tools,
     encoder: (ffmpeg) => chooseEncoder(spawnExec, ffmpeg),
-    synth: hostSynth(async () => (await api?.secrets?.get("elevenLabsKey")) ?? null),
+    synth: withMine(
+      hostSynth(async () => (await api?.secrets?.get("elevenLabsKey")) ?? null),
+      mineSynth({
+        read: edgeSynth,
+        converter: {
+          convert: async (request) => {
+            if (converter === null) throw new Error("Voice 'mine' has no converter started");
+            await converter.run.convert(request);
+          },
+          close: () => converter?.run.close(),
+        },
+        exec: spawnExec,
+        ffmpeg: async () => (await tools()).ffmpeg,
+        referenceFile: referenceFile(),
+        workDir: join(seedVcHome(), "work"),
+      }),
+    ),
     launch: browser.launch,
     harness: browser.harness,
     now: Date.now,
@@ -123,6 +181,7 @@ export function currentRenders(): RenderService {
       elevenLabsModel: setting("elevenLabsModel", ELEVENLABS_MODEL),
     }),
     media: () => mediaServed,
+    mine: async (languages) => await mineChoices(await mineSetup(), languages),
     elevenVoices: async () => {
       const key = await api?.secrets?.get("elevenLabsKey");
       if (key === null || key === undefined || key === "") {
@@ -183,6 +242,8 @@ export function activate(given: ExtensionApi): () => void {
   );
   given.log("activated", { tools: 11, media: mediaServed });
   return () => {
+    converter?.run.close();
+    converter = null;
     api = null;
     store = null;
     dryRuns = null;

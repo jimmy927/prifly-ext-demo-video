@@ -77,7 +77,7 @@ test("demo_render refuses an unknown voice, and a final one with no ElevenLabs v
   setup();
   const id = await videoOf(s, "V", [STEPPED]);
   await expect(s.fake.callTool("demo_render", { video: id, voice: "loud" })).rejects.toThrow(
-    'voice must be "draft" or "final"',
+    'voice must be "draft", "final" or "mine"',
   );
   await expect(s.fake.callTool("demo_render", { video: id, voice: "final" })).rejects.toThrow(
     "ElevenLabs voice id",

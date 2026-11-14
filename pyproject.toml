@@ -1,0 +1,35 @@
+[project]
+name = "demo-video-voice"
+version = "0.1.0"
+description = "Python side of Demo studio: the Seed-VC voice conversion behind voice \"mine\" (python/convert.py)."
+requires-python = ">=3.10,<3.11"
+# What Seed-VC's inference.py imports at the pinned commit (see python/convert.py), with its own pins.
+# Seed-VC itself is not on PyPI: convert.py fetches the pinned commit on first run.
+dependencies = [
+  "torch==2.4.0",
+  "torchaudio==2.4.0",
+  "numpy==1.26.4",
+  "scipy==1.13.1",
+  "librosa==0.10.2",
+  "soundfile==0.12.1",
+  "huggingface-hub>=0.28.1",
+  "transformers==4.46.3",
+  "munch==4.0.0",
+  "einops==0.8.0",
+  "hydra-core==1.3.2",
+  "matplotlib",
+  "pyyaml",
+]
+
+[tool.uv]
+package = false
+
+# CUDA 12.4 torch on Windows (RTX 3080 Laptop); other platforms take PyPI's own torch.
+[tool.uv.sources]
+torch = [{ index = "pytorch-cu124", marker = "sys_platform == 'win32'" }]
+torchaudio = [{ index = "pytorch-cu124", marker = "sys_platform == 'win32'" }]
+
+[[tool.uv.index]]
+name = "pytorch-cu124"
+url = "https://download.pytorch.org/whl/cu124"
+explicit = true

@@ -52,6 +52,24 @@ function voiceArg(args: Record<string, unknown>): boolean {
   throw new Error('voice must be "draft" or "final"');
 }
 
+/** demo_render's narration: the same as `voiceArg`, and "mine" (the reader's own voice, converted locally). */
+function renderVoiceArg(args: Record<string, unknown>): { final: boolean; mine: boolean } {
+  if (args["voice"] === "mine") return { final: false, mine: true };
+  try {
+    return { final: voiceArg(args), mine: false };
+  } catch {
+    throw new Error('voice must be "draft", "final" or "mine"');
+  }
+}
+
+/** demo_render's `voice`: VOICE, and "mine". */
+const RENDER_VOICE = {
+  type: "string",
+  enum: ["draft", "final", "mine"],
+  description:
+    "Draft (default): Edge voices, free. Final: ElevenLabs, which spends the reader's characters; use it only when the reader asked for the final or published voice. Mine: the reader's own voice, converted on this machine's NVIDIA GPU from their reference.wav (demo_voice_reference); nothing leaves the machine, and it needs the GPU and the Python environment.",
+};
+
 const VOICE = {
   type: "string",
   enum: ["draft", "final"],
@@ -244,25 +262,26 @@ export function demoTools(
     {
       name: "demo_render",
       description:
-        "Renders a video to <video>/out/<lang>.mp4 at 1920x1080 for each language in its brief, and keeps it as the next version (out/v<N>/, with what changed since the version before; the viewer lists it): voices every scene (cached by text and voice), records each scene in Demo studio's own headless browser, zooms toward each click, burns in subtitles, joins the scenes and mixes in the narration. redo 'all' (default) records every scene again; redo 'noted' records only the scenes the reader left notes on. voice 'draft' (default) speaks with the Edge voices; 'final' with ElevenLabs, which spends the reader's characters: pass it only when the reader asked for the final or published voice, and it needs the ElevenLabs key and voice id in the settings. The version records which voice it used, and the viewer shows it. Waits until it ends; only one render runs at a time. Changes only the video's own audio, takes and out folders.",
+        "Renders a video to <video>/out/<lang>.mp4 at 1920x1080 for each language in its brief, and keeps it as the next version (out/v<N>/, with what changed since the version before; the viewer lists it): voices every scene (cached by text and voice), records each scene in Demo studio's own headless browser, zooms toward each click, burns in subtitles, joins the scenes and mixes in the narration. redo 'all' (default) records every scene again; redo 'noted' records only the scenes the reader left notes on. voice 'draft' (default) speaks with the Edge voices; 'final' with ElevenLabs, which spends the reader's characters: pass it only when the reader asked for the final or published voice, and it needs the ElevenLabs key and voice id in the settings; 'mine' speaks every scene in the reader's own voice: Edge reads it in British English, then Seed-VC converts it on the local NVIDIA GPU using reference.wav (run demo_voice_reference first), nothing leaves the machine; it needs the GPU and the extension's Python environment, takes minutes the first time (it downloads the models) and says in one line what is missing; English videos only. The version records which voice it used, and the viewer shows it. Waits until it ends; only one render runs at a time. Changes only the video's own audio, takes and out folders.",
       inputSchema: objectSchema(
         {
           video: VIDEO,
           redo: { type: "string", enum: ["all", "noted"] },
-          voice: VOICE,
+          voice: RENDER_VOICE,
         },
         ["video"],
       ),
       call: async (args, ctx) => {
         const video = videoArg(args);
         await store().entry(video);
-        const final = voiceArg(args);
+        const { final, mine } = renderVoiceArg(args);
         // Before the wait, so the viewer shows "Rendering…" while it runs.
         const note = views().ensure(ctx.session, video);
         const answer = renderText(
           await render().runAndWait(video, {
             redo: args["redo"] === "noted" ? "noted" : "all",
             final,
+            ...(mine ? { mine } : {}),
           }),
         );
         return withNote(answer, note);
@@ -335,7 +354,7 @@ function voiceTools(
     {
       name: "demo_voice_reference",
       description:
-        "Builds reference.wav, about 20 seconds of the reader's own clear speech, for the voice conversion step (not built yet). Finds the recordings in the settings' 'Your voice reference folder', else (when 'Use my dictation recordings' is on) in the dictation recordings prifly keeps. pick 'auto' (default) ranks the pieces by clarity (2 to 12 s long, not too quiet, no clipping, few pauses) and joins the best up to about 20-25 s; pick a list of piece ids joins exactly those, in that order. Answers with each chosen piece's id, text, length and mean dB, the total length, the output path and a few runner-up ids to offer as swaps; show the pieces as a small table. Without recordings it says how to get some. Mono 16-bit at 48 kHz. Writes only the extension's own voice folder.",
+        "Builds reference.wav, about 20 seconds of the reader's own clear speech, that demo_render's voice 'mine' converts the narration to (run it before the first 'mine' render). Finds the recordings in the settings' 'Your voice reference folder', else (when 'Use my dictation recordings' is on) in the dictation recordings prifly keeps. pick 'auto' (default) ranks the pieces by clarity (2 to 12 s long, not too quiet, no clipping, few pauses) and joins the best up to about 20-25 s; pick a list of piece ids joins exactly those, in that order. Answers with each chosen piece's id, text, length and mean dB, the total length, the output path and a few runner-up ids to offer as swaps; show the pieces as a small table. Without recordings it says how to get some. Mono 16-bit at 48 kHz. Writes only the extension's own voice folder.",
       inputSchema: objectSchema(
         {
           pick: {

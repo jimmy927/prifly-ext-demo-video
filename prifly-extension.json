@@ -88,6 +88,14 @@
       "default": ""
     },
     {
+      "id": "mineVariant",
+      "label": "My voice: Seed-VC variant",
+      "description": "For demo_render with voice \"mine\" (local conversion on an NVIDIA GPU). B: the 44.1 kHz model, matched to your pitch (default). A: the 22 kHz speech model, no pitch matching. Changing it converts the scenes again.",
+      "type": "select",
+      "default": "B: 44.1 kHz, pitch matched",
+      "options": ["B: 44.1 kHz, pitch matched", "A: 22 kHz, no pitch matching"]
+    },
+    {
       "id": "yourVoiceFolder",
       "label": "Your voice reference folder",
       "description": "Your voice: a folder of your own clean recordings to build the voice reference from. Empty uses your dictation recordings when the box below is on.",
