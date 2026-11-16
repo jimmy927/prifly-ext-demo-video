@@ -77,9 +77,9 @@ const REQUEST = async (variant: "a" | "b" = "b"): Promise<ConvertRequest> => {
 
 // ---- the choice ----
 
-test("the reading voice is the configured English one when it is British, else Sonia", () => {
-  expect(readingVoice("en-GB-RyanNeural")).toBe("en-GB-RyanNeural");
-  expect(readingVoice("en-US-AriaNeural")).toBe("en-GB-SoniaNeural");
+test("the reading voice is always Ryan, whatever English draft voice is configured", () => {
+  expect(readingVoice("en-GB-SoniaNeural")).toBe("en-GB-RyanNeural");
+  expect(readingVoice("en-US-AriaNeural")).toBe("en-GB-RyanNeural");
 });
 
 test("variant B is the default and carries the f0 flags; A carries none", () => {
@@ -99,7 +99,7 @@ test("the choice names the Edge voice, the variant and the reference's hash", as
   );
   expect(choices.en).toEqual({
     engine: "seed-vc",
-    voice: "en-GB-SoniaNeural",
+    voice: "en-GB-RyanNeural",
     rate: "+0%",
     variant: "b",
     reference: await hashFile(referenceFile),
@@ -316,13 +316,13 @@ test("demo_render with voice mine speaks the converted voice; version.json and t
   expect(answer).toContain("Rendered.");
   const reference = await hashFile(referenceFile);
   expect(choices).toEqual([
-    { engine: "seed-vc", voice: "en-GB-SoniaNeural", rate: "+0%", variant: "b", reference },
+    { engine: "seed-vc", voice: "en-GB-RyanNeural", rate: "+0%", variant: "b", reference },
   ]);
   const info = await json(join(s.dir, id, "out", "v1", "version.json"));
   expect(info.voice).toEqual({
     mode: "mine",
     engine: "seed-vc",
-    voices: { en: "en-GB-SoniaNeural" },
+    voices: { en: "en-GB-RyanNeural" },
     variant: "b",
     reference,
   });
