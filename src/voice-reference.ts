@@ -179,70 +179,70 @@ async function headOf(path: string, bytes: number): Promise<Uint8Array> {
   }
 }
 
-/** The WAV of a piece: the file itself, or (FLAC, MP3, ...) a temporary PCM WAV at its own rate, mono. */
-async function asWav(
+/** ffmpeg decodes `audio` to a temporary mono 16-bit PCM WAV at its own rate and `use` reads it. */
+async function decoded<T>(
   deps: ReferenceDeps,
   audio: string,
-): Promise<{ file: Uint8Array; wav: Wav | null }> {
-  let path = audio;
-  let temp: string | null = null;
-  if (!audio.toLowerCase().endsWith(".wav")) {
-    const { ffmpeg } = await deps.tools();
-    temp = await mkdtemp(join(tmpdir(), "voice-ref-"));
-    path = join(temp, "piece.wav");
-    const ran = await deps.exec([
-      ffmpeg,
-      "-hide_banner",
-      "-loglevel",
-      "error",
-      "-y",
-      "-i",
-      audio,
-      "-ac",
-      "1",
-      "-c:a",
-      "pcm_s16le",
-      path,
-    ]);
+  use: (file: Uint8Array) => T,
+): Promise<T> {
+  const { ffmpeg } = await deps.tools();
+  const temp = await mkdtemp(join(tmpdir(), "voice-ref-"));
+  try {
+    const path = join(temp, "piece.wav");
+    const args = ["-hide_banner", "-loglevel", "error", "-y", "-i", audio];
+    const ran = await deps.exec([ffmpeg, ...args, "-ac", "1", "-c:a", "pcm_s16le", path]);
     if (ran.code !== 0) {
-      await rm(temp, { recursive: true, force: true });
       throw new Error(`ffmpeg could not read ${audio}: ${ran.err.trim().split("\n").at(-1)}`);
     }
-  }
-  try {
-    const file = await readFile(path);
-    return { file, wav: parseWav(file.subarray(0, 4096), file.byteLength) };
+    return use(await readFile(path));
   } finally {
-    if (temp !== null) await rm(temp, { recursive: true, force: true });
+    await rm(temp, { recursive: true, force: true });
   }
+}
+
+type Measured = { wav: Wav; signal: Signal } | null;
+
+const measureBytes = (file: Uint8Array): Measured => {
+  const wav = parseWav(file.subarray(0, 4096), file.byteLength);
+  const signal = wav === null || wav.channels !== 1 ? null : signalOf(file, wav);
+  return wav === null || signal === null ? null : { wav, signal };
+};
+
+/** A piece's format and signal: a mono 16/24-bit WAV read as it is; anything else (FLAC, MP3, stereo, 8-bit, a long header) decoded by ffmpeg first. */
+async function measureFile(deps: ReferenceDeps, audio: string): Promise<Measured> {
+  if (audio.toLowerCase().endsWith(".wav")) {
+    const direct = measureBytes(await readFile(audio));
+    if (direct !== null) return direct;
+  }
+  return await decoded(deps, audio, measureBytes);
 }
 
 /** Reads the samples of a piece and measures them. */
 async function measureSignal(deps: ReferenceDeps, piece: Piece): Promise<Signal | null> {
   deps.onSamples?.(piece.audio);
-  const { file, wav } = await asWav(deps, piece.audio);
-  return wav === null || wav.channels !== 1 ? null : signalOf(file, wav);
+  return (await measureFile(deps, piece.audio))?.signal ?? null;
 }
 
 /**
  * The cheap facts about a piece: its json and its WAV header, no sample read.
- * With `needEnglish` a piece that is not English stops at the json. A non-WAV
- * file has to be decoded to know its rate, so it is measured on the way.
+ * With `needEnglish` a piece that is not English stops at the json (its text is
+ * not kept). A file that is not a mono 16/24-bit WAV has to be decoded to know
+ * its rate, so it is measured on the way.
  */
 async function inspect(deps: ReferenceDeps, piece: Piece, needEnglish: boolean): Promise<Facts> {
   const facts: Facts = { ...(await sidecar(piece.base)), rate: null, seconds: 0 };
-  if (needEnglish && facts.language !== "en") return facts;
-  if (!piece.audio.toLowerCase().endsWith(".wav")) {
-    deps.onSamples?.(piece.audio);
-    const { file, wav } = await asWav(deps, piece.audio);
-    const signal = wav === null || wav.channels !== 1 ? null : signalOf(file, wav);
-    if (wav === null || signal === null) return { ...facts, unreadable: true };
-    return { ...facts, rate: wav.rate, seconds: lengthOf(wav), signal };
+  if (needEnglish && facts.language !== "en") return { ...facts, text: "" };
+  if (piece.audio.toLowerCase().endsWith(".wav")) {
+    const size = (await stat(piece.audio)).size;
+    const wav = parseWav(await headOf(piece.audio, 4096), size);
+    if (wav !== null && wav.channels === 1) {
+      return { ...facts, rate: wav.rate, seconds: lengthOf(wav) };
+    }
   }
-  const size = (await stat(piece.audio)).size;
-  const wav = parseWav(await headOf(piece.audio, 4096), size);
-  if (wav === null || wav.channels !== 1) return { ...facts, unreadable: true };
-  return { ...facts, rate: wav.rate, seconds: lengthOf(wav) };
+  deps.onSamples?.(piece.audio);
+  const found = await measureFile(deps, piece.audio);
+  if (found === null) return { ...facts, unreadable: true };
+  return { ...facts, rate: found.wav.rate, seconds: lengthOf(found.wav), signal: found.signal };
 }
 
 /** Whether the cheap facts leave the piece in the running; false means its samples need not be read. */
@@ -272,7 +272,7 @@ async function loadCache(file: string): Promise<Cache> {
 
 async function saveCache(file: string, cache: Cache): Promise<void> {
   await mkdir(dirname(file), { recursive: true });
-  const temp = `${file}.tmp`;
+  const temp = `${file}.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`;
   await writeFile(temp, JSON.stringify(cache), "utf8");
   await rename(temp, file);
 }
@@ -305,7 +305,7 @@ async function addSignal(deps: ReferenceDeps, piece: Piece, entry: Entry): Promi
 async function know(
   deps: ReferenceDeps,
   pieces: readonly Piece[],
-  mode: { needEnglish: boolean; everything: boolean },
+  mode: { needEnglish: boolean; everything: boolean; root: string },
 ): Promise<Map<string, Facts>> {
   const file = join(deps.outDir, STATS_FILE);
   const cache = await loadCache(file);
@@ -331,6 +331,15 @@ async function know(
     }
     known.set(piece.audio, entry);
   });
+  if (!mode.everything) {
+    // Recordings that are gone are forgotten, so the file does not only grow.
+    const present = new Set(pieces.map((piece) => piece.audio));
+    for (const path of Object.keys(cache.entries)) {
+      if (present.has(path) || !path.startsWith(mode.root)) continue;
+      delete cache.entries[path];
+      changed = true;
+    }
+  }
   if (changed) await saveCache(file, cache);
   return known;
 }
@@ -364,8 +373,9 @@ async function pickAuto(
   deps: ReferenceDeps,
   pieces: readonly Piece[],
   needEnglish: boolean,
+  root: string,
 ): Promise<Chosen> {
-  const known = await know(deps, pieces, { needEnglish, everything: false });
+  const known = await know(deps, pieces, { needEnglish, everything: false, root });
   const good: Ranked[] = [];
   for (const piece of pieces) {
     const facts = known.get(piece.audio);
@@ -397,7 +407,7 @@ async function pickIds(
     );
   }
   const wanted = [...new Set(ids)].map((id) => byId.get(id) as Piece);
-  const known = await know(deps, wanted, { needEnglish: false, everything: true });
+  const known = await know(deps, wanted, { needEnglish: false, everything: true, root: "" });
   const chosen: Ranked[] = [];
   for (const piece of wanted) {
     const found = measured(piece, known.get(piece.audio));
@@ -486,11 +496,14 @@ export async function voiceReference(
 ): Promise<string> {
   if (sources.folder === "" && !sources.useDictation) return NO_SOURCE;
   const fromFolder = sources.folder !== "";
-  const pieces = await findPieces(fromFolder ? sources.folder : sources.dictationDir);
+  const root = fromFolder ? sources.folder : sources.dictationDir;
+  const pieces = await findPieces(root);
   if (pieces.length === 0) return fromFolder ? noFolderRecordings(sources.folder) : NO_DICTATION;
   // The reader's own folder has no json to name the language: its recordings count as theirs.
   const picked =
-    pick === "auto" ? await pickAuto(deps, pieces, !fromFolder) : await pickIds(deps, pieces, pick);
+    pick === "auto"
+      ? await pickAuto(deps, pieces, !fromFolder, root)
+      : await pickIds(deps, pieces, pick);
   if ("none" in picked) return picked.none;
   const total = picked.chosen.reduce((sum, each) => sum + each.seconds, 0);
   const out = join(deps.outDir, REFERENCE_FILE);

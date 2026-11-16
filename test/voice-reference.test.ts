@@ -79,6 +79,26 @@ function wav(options: Tone, seed: number): Uint8Array {
   return out;
 }
 
+/** The same 16-bit signal on two channels. */
+function stereo(mono: Uint8Array): Uint8Array {
+  const count = (mono.byteLength - 44) / 2;
+  const out = new Uint8Array(44 + count * 4);
+  const view = new DataView(out.buffer);
+  out.set(mono.subarray(0, 44));
+  view.setUint32(4, 36 + count * 4, true);
+  view.setUint16(22, 2, true);
+  view.setUint32(28, view.getUint32(24, true) * 4, true);
+  view.setUint16(32, 4, true);
+  view.setUint32(40, count * 4, true);
+  const source = new DataView(mono.buffer, mono.byteOffset);
+  for (let k = 0; k < count; k++) {
+    const value = source.getInt16(44 + k * 2, true);
+    view.setInt16(44 + k * 4, value, true);
+    view.setInt16(46 + k * 4, value, true);
+  }
+  return out;
+}
+
 let seeds = 0;
 
 type Piece = Tone & { text: string; language?: string; full?: boolean };
@@ -270,11 +290,14 @@ test("the folder setting wins over the dictation recordings, and its recordings 
   const own = mkdtempSync(join(tmpdir(), "own-voice-"));
   writeFileSync(join(own, "note.wav"), wav({ seconds: 6, rate: 44100 }, 5));
   writeFileSync(join(own, "slow.wav"), wav({ seconds: 6, rate: 22050 }, 6));
+  writeFileSync(join(own, "phone.wav"), stereo(wav({ seconds: 6, snr: 38 }, 7)));
   const answer = await voiceReference(
     ready(join(s.dir, "_voice")),
     { folder: own, useDictation: true, dictationDir: dictated },
     "auto",
   );
+  // A stereo capture is downmixed by ffmpeg and ranked, not dropped.
+  expect(answer).toMatch(/\| phone \| \(no text\) \| 6\.0 \| [\d.]+ \|/);
   expect(answer).toMatch(/\| note \| \(no text\) \| 6\.0 \| [\d.]+ \|/);
   expect(answer).not.toContain("slow");
   expect(answer).not.toContain("100001-aaa-1");
