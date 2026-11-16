@@ -40,7 +40,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { basename, dirname, join } from "node:path";
+import { basename, dirname, join, sep } from "node:path";
 import type { Exec } from "./exec";
 import type { Tools } from "./ffmpeg";
 import { lengthOf, parseWav, type Signal, signalOf, type Wav } from "./voice-signal";
@@ -240,7 +240,8 @@ async function inspect(deps: ReferenceDeps, piece: Piece, needEnglish: boolean):
     }
   }
   deps.onSamples?.(piece.audio);
-  const found = await measureFile(deps, piece.audio);
+  // A broken file (a crashed recording) is remembered as unreadable, not allowed to fail the run.
+  const found = await measureFile(deps, piece.audio).catch(() => null);
   if (found === null) return { ...facts, unreadable: true };
   return { ...facts, rate: found.wav.rate, seconds: lengthOf(found.wav), signal: found.signal };
 }
@@ -291,7 +292,7 @@ async function inPool<T>(items: readonly T[], work: (item: T) => Promise<void>):
 
 /** Reads the samples of a piece into its entry; a piece that has none to measure is marked unreadable. */
 async function addSignal(deps: ReferenceDeps, piece: Piece, entry: Entry): Promise<void> {
-  const signal = await measureSignal(deps, piece);
+  const signal = await measureSignal(deps, piece).catch(() => null);
   if (signal === null) entry.unreadable = true;
   else entry.signal = signal;
 }
@@ -335,7 +336,7 @@ async function know(
     // Recordings that are gone are forgotten, so the file does not only grow.
     const present = new Set(pieces.map((piece) => piece.audio));
     for (const path of Object.keys(cache.entries)) {
-      if (present.has(path) || !path.startsWith(mode.root)) continue;
+      if (present.has(path) || !path.startsWith(`${mode.root}${sep}`)) continue;
       delete cache.entries[path];
       changed = true;
     }

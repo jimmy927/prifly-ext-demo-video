@@ -362,3 +362,24 @@ test("a piece gated to digital silence between words is not ranked as the cleane
   const answer = await voiceReference(ready(join(s.dir, "_voice")), from(source), "auto");
   expect(rowsIn(answer).map((row) => row.id)).toEqual(["100002-aaa-2"]);
 });
+
+test("a broken recording does not fail the run, and is skipped next time without being read again", async () => {
+  const s = studio();
+  const source = dictation({ "100002-aaa-2": { seconds: 6, snr: 33, text: "A real recording." } });
+  const day = join(source, "2026-11-09");
+  writeFileSync(join(day, "100001-aaa-1.wav"), new Uint8Array());
+  writeFileSync(
+    join(day, "100001-aaa-1.json"),
+    JSON.stringify({ text: "Crashed.", language: "en" }),
+  );
+  const reads: string[] = [];
+  const deps = { ...ready(join(s.dir, "_voice")), onSamples: (file: string) => reads.push(file) };
+  const answer = await voiceReference(deps, from(source), "auto");
+  expect(rowsIn(answer).map((row) => row.id)).toEqual(["100002-aaa-2"]);
+  reads.length = 0;
+  await voiceReference(deps, from(source), "auto");
+  expect(reads).toEqual([]);
+  await expect(voiceReference(deps, from(source), ["100001-aaa-1"])).rejects.toThrow(
+    "Could not read",
+  );
+});
