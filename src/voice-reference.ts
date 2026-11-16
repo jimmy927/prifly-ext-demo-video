@@ -1,33 +1,53 @@
 /**
- * `demo_voice_reference`: builds `reference.wav`, about 20 seconds of nothing but the
- * reader's own clear speech, for a voice conversion step that is not built
- * yet. The pieces come from the setting "Your voice reference folder" when it
- * is set, else (box "Use my dictation recordings" on) from prifly's dictation
- * recordings, `<prifly data>/dictation-recordings/YYYY-MM-DD/HHMMSS-<dict>-<piece>.wav`
- * with a `.json` beside it whose `text` is what was said (prifly's
- * `dictation/recording-files.ts`). A piece's best audio is its `.full.wav`
- * when there is one, else its `.wav` (the microphone's own rate, or the 16 kHz
- * the speech model heard).
+ * `demo_voice_reference`: builds `reference.wav`, about 25 seconds of nothing but
+ * the reader's own clean speech, that the voice conversion (Seed-VC, or
+ * ElevenLabs' voice changer) copies the voice from. Seed-VC only uses the first
+ * 25 seconds of it, so that is the budget. The pieces come from the setting
+ * "Your voice reference folder" when it is set, else (box "Use my dictation
+ * recordings" on) from prifly's dictation recordings,
+ * `<prifly data>/dictation-recordings/YYYY-MM-DD/HHMMSS-<dict>-<piece>.wav`
+ * with a `.json` beside it whose `text` is what was said and whose `language`
+ * is the language it was in (prifly's `dictation/recording-files.ts`). A piece's
+ * best audio is its `.full.wav` when there is one, else its `.wav`.
  *
- * Clarity, by ffmpeg's `volumedetect` and `silencedetect`: a piece of 2 to 12
- * seconds is a candidate; it scores 100 minus a penalty for being quiet (the
- * mean under -26 dB, 2 points a dB), for a hot mean (over -12 dB), for clipping
- * (a peak at 0 dB, 30), for pauses (60 times the share of the piece that is
- * silent) and for straying from 7 seconds (1.5 a second). A mean under -45 dB
- * or a piece more than half silence is not a candidate at all.
+ * pick "auto" looks at every piece, not the newest few. A candidate is English
+ * (the json says "en"; a folder's own recordings have no json and count), a raw
+ * full-quality capture (the WAV header's rate is 44.1 kHz or more: the 16 kHz
+ * copies the speech model heard are skipped), 5 to 12 seconds long, not clipped
+ * (under 0.05 % of the samples at 16-bit full scale), not quiet (speech above
+ * 55 dB) and not gated to digital silence between words. It is ranked by signal-to-noise, measured over 20 ms frames:
+ * the 90th percentile frame level (speech) minus the 10th (the noise floor), in
+ * dB. The cleanest are taken until 25.0 s is full, never more.
  *
- * The output is mono 16-bit PCM at 48 kHz whatever the pieces were: a 16 kHz
- * piece is resampled up (it gains no detail, and the answer says how many were
- * like that), so pieces of different rates join without a seam.
+ * Measuring tens of thousands of WAVs is slow, so what was learnt about a file
+ * (language, rate, length, SNR) is kept in `voice-stats.json` beside
+ * `reference.wav`, keyed by path, size and modification time: only new or
+ * changed files are read again, and the cheap checks (json, WAV header) come
+ * before any sample is read.
+ *
+ * The output is mono 16-bit PCM at 48 kHz whatever the pieces were.
  */
 
-import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  open,
+  readdir,
+  readFile,
+  rename,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import type { Exec } from "./exec";
 import type { Tools } from "./ffmpeg";
+import { lengthOf, parseWav, type Signal, signalOf, type Wav } from "./voice-signal";
 
 export const REFERENCE_FILE = "reference.wav";
 export const REFERENCE_RATE = 48000;
+export const STATS_FILE = "voice-stats.json";
 
 export const NO_DICTATION =
   "No dictation recordings found — turn on Keep recordings in Settings › Dictation, dictate a few minutes, then ask again.";
@@ -36,15 +56,25 @@ export const noFolderRecordings = (folder: string) =>
 export const NO_SOURCE =
   'No recordings to use: set "Your voice reference folder" or turn on "Use my dictation recordings" in Settings › Extensions › Demo studio, then ask again.';
 
-const MIN_SECONDS = 2;
+const MIN_SECONDS = 5;
 const MAX_SECONDS = 12;
-const TARGET_SECONDS = 20;
-const LIMIT_SECONDS = 25;
-const QUIET_FLOOR_DB = -45;
-const MAX_SILENCE = 0.5;
-/** Pieces measured at most, newest first: ffmpeg runs once per piece. */
-const MAX_MEASURED = 120;
+/** What Seed-VC reads of a reference; the output never goes past it. */
+export const LIMIT_SECONDS = 25;
+/** A raw capture is at least this rate; the 16 kHz copies are not. */
+const MIN_RATE = 44100;
+/** The share of samples at or past 32000 (16-bit scale) a piece may have. */
+const MAX_CLIPPED = 0.0005;
+/** The 90th percentile frame level, dB re 1 LSB of a 16-bit sample, under which a piece is too quiet. */
+const MIN_SPEECH_DB = 55;
+/**
+ * The 10th percentile frame level under which the floor is not a noise floor
+ * but digital silence (a gated piece): its SNR is meaningless (200 dB and more),
+ * so it is not ranked. Real captures sit at 20 dB and over.
+ */
+const MIN_FLOOR_DB = 10;
 const RUNNERS_UP = 5;
+const CACHE_VERSION = 1;
+const READ_AT_ONCE = 8;
 const AUDIO = /\.(wav|flac|mp3|m4a|ogg|opus)$/i;
 const FULL = ".full.wav";
 
@@ -58,24 +88,31 @@ export type ReferenceSources = {
 export type ReferenceDeps = {
   exec: Exec;
   tools: () => Promise<Tools>;
-  /** Where `reference.wav` and `reference.json` go. */
+  /** Where `reference.wav`, `reference.json` and `voice-stats.json` go. */
   outDir: string;
+  /** Called with a file each time its samples are read (a test counts them). */
+  onSamples?: (path: string) => void;
 };
 
-export type Piece = { id: string; audio: string; text: string };
+/** A recording: `base` is its path without extension, where its `.json` is. */
+export type Piece = { id: string; audio: string; base: string };
 
-export type Measured = {
-  seconds: number;
+/** What is known about a piece: the cheap facts, and the signal once it was measured. */
+export type Facts = {
+  language: string | null;
+  text: string;
   rate: number | null;
-  meanDb: number;
-  maxDb: number;
-  /** The share of the piece that is silent, 0 to 1. */
-  silence: number;
+  seconds: number;
+  signal?: Signal;
+  /** The piece cannot be read as 16- or 24-bit mono PCM audio. */
+  unreadable?: true;
 };
 
-export type Ranked = Piece & Measured & { score: number };
+export type Ranked = Piece & Facts & Signal;
 
 type Files = { plain?: string; full?: string };
+type Entry = Facts & { size: number; mtime: number };
+type Cache = { version: number; entries: Record<string, Entry> };
 
 /** The audio files of a folder by their base name (the path without extension), a `.full.wav` kept apart from its `.wav`. */
 function groupFiles(names: readonly string[]): Map<string, Files> {
@@ -91,7 +128,7 @@ function groupFiles(names: readonly string[]): Map<string, Files> {
   return bases;
 }
 
-/** Every piece under `root`, newest first (the day and time are in the names). */
+/** Every piece under `root`, newest first (the day and time are in the names). Reads no file. */
 export async function findPieces(root: string): Promise<Piece[]> {
   let names: string[];
   try {
@@ -108,121 +145,202 @@ export async function findPieces(root: string): Promise<Piece[]> {
     let id = basename(base);
     if (used.has(id)) id = `${basename(dirname(base))}~${id}`;
     used.add(id);
-    pieces.push({ id, audio: join(root, file), text: await textOf(join(root, base)) });
+    pieces.push({ id, audio: join(root, file), base: join(root, base) });
   }
   return pieces;
 }
 
-async function textOf(base: string): Promise<string> {
+/** The piece's sidecar: what was said and in which language (null when there is no json or no field). */
+async function sidecar(base: string): Promise<{ text: string; language: string | null }> {
   try {
-    const side = JSON.parse(await readFile(`${base}.json`, "utf8")) as { text?: unknown };
-    return typeof side.text === "string" ? side.text.trim() : "";
+    const side = JSON.parse(await readFile(`${base}.json`, "utf8")) as {
+      text?: unknown;
+      language?: unknown;
+    };
+    return {
+      text:
+        typeof side.text === "string" ? side.text.replace(/\s+/g, " ").trim().slice(0, 300) : "",
+      language: typeof side.language === "string" ? side.language : null,
+    };
   } catch {
-    return "";
+    return { text: "", language: null };
   }
 }
 
-/** A canonical WAV's seconds from its first 44 bytes; null when it is not one (then ffmpeg measures it). */
-async function headerSeconds(path: string): Promise<number | null> {
-  if (!path.toLowerCase().endsWith(".wav")) return null;
+/** The first bytes of a file. */
+async function headOf(path: string, bytes: number): Promise<Uint8Array> {
+  const handle = await open(path, "r");
   try {
-    const file = Bun.file(path);
-    const head = new DataView(await file.slice(0, 44).arrayBuffer());
-    if (head.byteLength < 44 || head.getUint32(0, false) !== 0x52494646) return null;
-    const bytesPerSecond = head.getUint32(28, true);
-    return bytesPerSecond === 0 ? null : Math.max(0, file.size - 44) / bytesPerSecond;
-  } catch {
-    return null;
+    const buf = Buffer.alloc(bytes);
+    const { bytesRead } = await handle.read(buf, 0, bytes, 0);
+    return buf.subarray(0, bytesRead);
+  } finally {
+    await handle.close();
   }
 }
 
-const number = (text: string, pattern: RegExp): number | null => {
-  const found = pattern.exec(text)?.[1];
-  if (found === undefined) return null;
-  return found === "-inf" ? Number.NEGATIVE_INFINITY : Number.parseFloat(found);
-};
+/** The WAV of a piece: the file itself, or (FLAC, MP3, ...) a temporary PCM WAV at its own rate, mono. */
+async function asWav(
+  deps: ReferenceDeps,
+  audio: string,
+): Promise<{ file: Uint8Array; wav: Wav | null }> {
+  let path = audio;
+  let temp: string | null = null;
+  if (!audio.toLowerCase().endsWith(".wav")) {
+    const { ffmpeg } = await deps.tools();
+    temp = await mkdtemp(join(tmpdir(), "voice-ref-"));
+    path = join(temp, "piece.wav");
+    const ran = await deps.exec([
+      ffmpeg,
+      "-hide_banner",
+      "-loglevel",
+      "error",
+      "-y",
+      "-i",
+      audio,
+      "-ac",
+      "1",
+      "-c:a",
+      "pcm_s16le",
+      path,
+    ]);
+    if (ran.code !== 0) {
+      await rm(temp, { recursive: true, force: true });
+      throw new Error(`ffmpeg could not read ${audio}: ${ran.err.trim().split("\n").at(-1)}`);
+    }
+  }
+  try {
+    const file = await readFile(path);
+    return { file, wav: parseWav(file.subarray(0, 4096), file.byteLength) };
+  } finally {
+    if (temp !== null) await rm(temp, { recursive: true, force: true });
+  }
+}
 
-/** What ffmpeg says about a file: its length, rate, mean and peak volume and silence. */
-export function parseMeasure(report: string): Measured | null {
-  const duration = /Duration: (\d+):(\d+):(\d+(?:\.\d+)?)/.exec(report);
-  const meanDb = number(report, /mean_volume: (-?[\d.]+|-inf) dB/);
-  const maxDb = number(report, /max_volume: (-?[\d.]+|-inf) dB/);
-  if (duration === null || meanDb === null || maxDb === null) return null;
-  const seconds =
-    Number(duration[1]) * 3600 + Number(duration[2]) * 60 + Number.parseFloat(duration[3] ?? "0");
-  let silent = 0;
-  for (const found of report.matchAll(/silence_duration: ([\d.]+)/g)) {
-    silent += Number.parseFloat(found[1] ?? "0");
+/** Reads the samples of a piece and measures them. */
+async function measureSignal(deps: ReferenceDeps, piece: Piece): Promise<Signal | null> {
+  deps.onSamples?.(piece.audio);
+  const { file, wav } = await asWav(deps, piece.audio);
+  return wav === null || wav.channels !== 1 ? null : signalOf(file, wav);
+}
+
+/**
+ * The cheap facts about a piece: its json and its WAV header, no sample read.
+ * With `needEnglish` a piece that is not English stops at the json. A non-WAV
+ * file has to be decoded to know its rate, so it is measured on the way.
+ */
+async function inspect(deps: ReferenceDeps, piece: Piece, needEnglish: boolean): Promise<Facts> {
+  const facts: Facts = { ...(await sidecar(piece.base)), rate: null, seconds: 0 };
+  if (needEnglish && facts.language !== "en") return facts;
+  if (!piece.audio.toLowerCase().endsWith(".wav")) {
+    deps.onSamples?.(piece.audio);
+    const { file, wav } = await asWav(deps, piece.audio);
+    const signal = wav === null || wav.channels !== 1 ? null : signalOf(file, wav);
+    if (wav === null || signal === null) return { ...facts, unreadable: true };
+    return { ...facts, rate: wav.rate, seconds: lengthOf(wav), signal };
   }
-  // Silence still running at the end has a start and no end.
-  const starts = [...report.matchAll(/silence_start: (-?[\d.]+)/g)];
-  const ends = [...report.matchAll(/silence_end: /g)];
-  const lastStart = starts.at(-1)?.[1];
-  if (starts.length > ends.length && lastStart !== undefined) {
-    silent += Math.max(0, seconds - Math.max(0, Number.parseFloat(lastStart)));
+  const size = (await stat(piece.audio)).size;
+  const wav = parseWav(await headOf(piece.audio, 4096), size);
+  if (wav === null || wav.channels !== 1) return { ...facts, unreadable: true };
+  return { ...facts, rate: wav.rate, seconds: lengthOf(wav) };
+}
+
+/** Whether the cheap facts leave the piece in the running; false means its samples need not be read. */
+const plausible = (facts: Facts, needEnglish: boolean): boolean =>
+  facts.unreadable !== true &&
+  (!needEnglish || facts.language === "en") &&
+  facts.rate !== null &&
+  facts.rate >= MIN_RATE &&
+  facts.seconds >= MIN_SECONDS &&
+  facts.seconds <= MAX_SECONDS;
+
+/** A measured piece is clean enough: not clipped and not quiet. */
+export const usable = (signal: Signal): boolean =>
+  signal.clipped <= MAX_CLIPPED &&
+  signal.speech >= MIN_SPEECH_DB &&
+  signal.speech - signal.snr >= MIN_FLOOR_DB;
+
+async function loadCache(file: string): Promise<Cache> {
+  try {
+    const cache = JSON.parse(await readFile(file, "utf8")) as Cache;
+    if (cache.version === CACHE_VERSION && typeof cache.entries === "object") return cache;
+  } catch {
+    // None yet, or one that cannot be read: measure again.
   }
-  return {
-    seconds,
-    rate: number(report, /Audio: [^\n]*?, (\d+) Hz/),
-    meanDb,
-    maxDb,
-    silence: seconds === 0 ? 1 : Math.min(1, silent / seconds),
+  return { version: CACHE_VERSION, entries: {} };
+}
+
+async function saveCache(file: string, cache: Cache): Promise<void> {
+  await mkdir(dirname(file), { recursive: true });
+  const temp = `${file}.tmp`;
+  await writeFile(temp, JSON.stringify(cache), "utf8");
+  await rename(temp, file);
+}
+
+/** Runs `work` over `items`, `READ_AT_ONCE` at a time. */
+async function inPool<T>(items: readonly T[], work: (item: T) => Promise<void>): Promise<void> {
+  let next = 0;
+  const worker = async () => {
+    while (next < items.length) {
+      const item = items[next++] as T;
+      await work(item);
+    }
   };
+  await Promise.all(Array.from({ length: Math.min(READ_AT_ONCE, items.length) }, worker));
 }
 
-export function clarityScore(measured: Measured): number {
-  const quiet = Math.max(0, -26 - measured.meanDb) * 2;
-  const hot = Math.max(0, measured.meanDb + 12) * 2;
-  const clipped = measured.maxDb >= -0.1 ? 30 : 0;
-  const pauses = measured.silence * 60;
-  const length = Math.abs(measured.seconds - 7) * 1.5;
-  return Math.round((100 - quiet - hot - clipped - pauses - length) * 10) / 10;
+/** Reads the samples of a piece into its entry; a piece that has none to measure is marked unreadable. */
+async function addSignal(deps: ReferenceDeps, piece: Piece, entry: Entry): Promise<void> {
+  const signal = await measureSignal(deps, piece);
+  if (signal === null) entry.unreadable = true;
+  else entry.signal = signal;
 }
 
-export const usable = (measured: Measured): boolean =>
-  measured.seconds >= MIN_SECONDS &&
-  measured.seconds <= MAX_SECONDS &&
-  measured.meanDb >= QUIET_FLOOR_DB &&
-  measured.silence <= MAX_SILENCE;
-
-async function measure(exec: Exec, ffmpeg: string, piece: Piece): Promise<Ranked> {
-  const ran = await exec([
-    ffmpeg,
-    "-hide_banner",
-    "-nostats",
-    "-i",
-    piece.audio,
-    "-af",
-    "silencedetect=noise=-40dB:d=0.1,volumedetect",
-    "-f",
-    "null",
-    "-",
-  ]);
-  const measured = ran.code === 0 ? parseMeasure(`${ran.err}\n${ran.out}`) : null;
-  if (measured === null) {
-    throw new Error(`ffmpeg could not read ${piece.audio}: ${ran.err.trim().split("\n").at(-1)}`);
-  }
-  return { ...piece, ...measured, score: clarityScore(measured) };
+/**
+ * Facts for `pieces`, through the cache: a file whose path, size and mtime are
+ * unchanged costs a stat. The samples are read only for a piece the cheap
+ * checks let through (auto), or for every piece asked for (`everything`, a list
+ * of ids, which skips the checks).
+ */
+async function know(
+  deps: ReferenceDeps,
+  pieces: readonly Piece[],
+  mode: { needEnglish: boolean; everything: boolean },
+): Promise<Map<string, Facts>> {
+  const file = join(deps.outDir, STATS_FILE);
+  const cache = await loadCache(file);
+  const known = new Map<string, Facts>();
+  let changed = false;
+  await inPool(pieces, async (piece) => {
+    const info = await stat(piece.audio).catch(() => null);
+    if (info === null) return;
+    const mtime = Math.round(info.mtimeMs);
+    let entry = cache.entries[piece.audio];
+    // An entry that stopped at the json (not English) has no header facts; a list of ids wants them.
+    const stopped = mode.everything && entry?.rate === null && entry.unreadable !== true;
+    if (entry === undefined || entry.size !== info.size || entry.mtime !== mtime || stopped) {
+      const needEnglish = mode.needEnglish && !mode.everything;
+      entry = { ...(await inspect(deps, piece, needEnglish)), size: info.size, mtime };
+      cache.entries[piece.audio] = entry;
+      changed = true;
+    }
+    const wanted = mode.everything ? entry.unreadable !== true : plausible(entry, mode.needEnglish);
+    if (wanted && entry.signal === undefined) {
+      await addSignal(deps, piece, entry);
+      changed = true;
+    }
+    known.set(piece.audio, entry);
+  });
+  if (changed) await saveCache(file, cache);
+  return known;
 }
 
-/** The pieces worth measuring: not obviously too short or long by their header, newest first, at most `MAX_MEASURED`. */
-async function candidates(pieces: readonly Piece[]): Promise<Piece[]> {
-  const kept: Piece[] = [];
-  for (const piece of pieces) {
-    const seconds = await headerSeconds(piece.audio);
-    if (seconds !== null && (seconds < MIN_SECONDS - 0.5 || seconds > MAX_SECONDS + 1)) continue;
-    kept.push(piece);
-    if (kept.length >= MAX_MEASURED) break;
-  }
-  return kept;
-}
-
-/** Best first, until about 20 seconds; no piece takes the total past 25. */
+/** Cleanest first, up to `LIMIT_SECONDS` in all: a piece that would take the total past it is passed over for a shorter one. */
 export function chooseAuto(ranked: readonly Ranked[]): { chosen: Ranked[]; rest: Ranked[] } {
   const chosen: Ranked[] = [];
   let total = 0;
   for (const piece of ranked) {
-    if (total >= TARGET_SECONDS) break;
+    if (LIMIT_SECONDS - total < MIN_SECONDS) break;
     if (total + piece.seconds > LIMIT_SECONDS) continue;
     chosen.push(piece);
     total += piece.seconds;
@@ -238,32 +356,35 @@ const cell = (text: string) => {
 
 type Chosen = { chosen: Ranked[]; rest: Ranked[]; note: string } | { none: string };
 
-/** pick "auto": the clearest of the newest pieces. */
+const measured = (piece: Piece, facts: Facts | undefined): Ranked | null =>
+  facts?.signal === undefined ? null : { ...piece, ...facts, ...facts.signal };
+
+/** pick "auto": every English raw piece, the cleanest first. */
 async function pickAuto(
   deps: ReferenceDeps,
-  ffmpeg: string,
   pieces: readonly Piece[],
+  needEnglish: boolean,
 ): Promise<Chosen> {
-  const looked = await candidates(pieces);
-  const ranked: Ranked[] = [];
-  for (const piece of looked) ranked.push(await measure(deps.exec, ffmpeg, piece));
-  const good = ranked.filter(usable).sort((a, b) => b.score - a.score);
+  const known = await know(deps, pieces, { needEnglish, everything: false });
+  const good: Ranked[] = [];
+  for (const piece of pieces) {
+    const facts = known.get(piece.audio);
+    if (facts === undefined || !plausible(facts, needEnglish)) continue;
+    const found = measured(piece, facts);
+    if (found !== null && usable(found)) good.push(found);
+  }
+  good.sort((a, b) => b.snr - a.snr || b.seconds - a.seconds);
   if (good.length === 0) {
     return {
-      none: `Found ${pieces.length} recordings, but none is a clear piece of 2 to 12 seconds (too short, too quiet or mostly pauses). Record a few more clear sentences, then ask again.`,
+      none: `Found ${pieces.length} recordings, but none is a clean piece: ${needEnglish ? "English, " : ""}captured at full quality (44.1 kHz or more), 5 to 12 seconds, not clipped and not too quiet. Record a few more clear sentences, then ask again.`,
     };
   }
-  const note =
-    looked.length < pieces.length
-      ? `Looked at the newest ${looked.length} of ${pieces.length} pieces.`
-      : "";
-  return { ...chooseAuto(good), note };
+  return { ...chooseAuto(good), note: `Ranked ${good.length} usable pieces of ${pieces.length}.` };
 }
 
 /** pick a list of ids: those pieces, in that order. */
 async function pickIds(
   deps: ReferenceDeps,
-  ffmpeg: string,
   pieces: readonly Piece[],
   ids: readonly string[],
 ): Promise<Chosen> {
@@ -275,9 +396,16 @@ async function pickIds(
       `No piece with the id ${unknown.join(", ")}. Run demo_voice_reference with pick "auto" to list ids.`,
     );
   }
+  const wanted = [...new Set(ids)].map((id) => byId.get(id) as Piece);
+  const known = await know(deps, wanted, { needEnglish: false, everything: true });
   const chosen: Ranked[] = [];
-  for (const id of new Set(ids))
-    chosen.push(await measure(deps.exec, ffmpeg, byId.get(id) as Piece));
+  for (const piece of wanted) {
+    const found = measured(piece, known.get(piece.audio));
+    if (found === null) {
+      throw new Error(`Could not read ${piece.audio} as 16- or 24-bit mono PCM audio.`);
+    }
+    chosen.push(found);
+  }
   return { chosen, rest: [], note: "" };
 }
 
@@ -313,29 +441,22 @@ function answerText(
   out: string,
   total: number,
   picked: { chosen: Ranked[]; rest: Ranked[]; note: string },
-  auto: boolean,
 ): string {
   const { chosen, rest, note } = picked;
   const lines = [
     `Voice reference ready: ${out} (${one(total)} s, mono ${REFERENCE_RATE / 1000} kHz).`,
     "",
-    "| id | text | s | mean dB |",
+    "| id | text | s | SNR dB |",
     "| --- | --- | --- | --- |",
     ...chosen.map(
-      (each) => `| ${each.id} | ${cell(each.text)} | ${one(each.seconds)} | ${one(each.meanDb)} |`,
+      (each) => `| ${each.id} | ${cell(each.text)} | ${one(each.seconds)} | ${one(each.snr)} |`,
     ),
   ];
-  const low = chosen.filter((each) => each.rate !== null && each.rate < REFERENCE_RATE * 0.9);
+  const low = chosen.filter((each) => each.rate !== null && each.rate < MIN_RATE);
   if (low.length > 0) {
     lines.push(
       "",
       `${low.length} of ${chosen.length} pieces only exist at a lower rate (16 kHz); they were resampled to 48 kHz and gain no detail.`,
-    );
-  }
-  if (auto && total < TARGET_SECONDS) {
-    lines.push(
-      "",
-      `Only ${one(total)} s of clear speech was found; dictate more for a better reference.`,
     );
   }
   if (rest.length > 0) {
@@ -343,7 +464,7 @@ function answerText(
       .slice(0, RUNNERS_UP)
       .map(
         (each) =>
-          `${each.id} (${one(each.seconds)} s, ${one(each.meanDb)} dB, "${cell(each.text)}")`,
+          `${each.id} (${one(each.seconds)} s, SNR ${one(each.snr)} dB, "${cell(each.text)}")`,
       );
     lines.push(
       "",
@@ -364,31 +485,29 @@ export async function voiceReference(
   pick: "auto" | readonly string[],
 ): Promise<string> {
   if (sources.folder === "" && !sources.useDictation) return NO_SOURCE;
-  const pieces = await findPieces(sources.folder !== "" ? sources.folder : sources.dictationDir);
-  if (pieces.length === 0) {
-    return sources.folder !== "" ? noFolderRecordings(sources.folder) : NO_DICTATION;
-  }
-  const { ffmpeg } = await deps.tools();
+  const fromFolder = sources.folder !== "";
+  const pieces = await findPieces(fromFolder ? sources.folder : sources.dictationDir);
+  if (pieces.length === 0) return fromFolder ? noFolderRecordings(sources.folder) : NO_DICTATION;
+  // The reader's own folder has no json to name the language: its recordings count as theirs.
   const picked =
-    pick === "auto"
-      ? await pickAuto(deps, ffmpeg, pieces)
-      : await pickIds(deps, ffmpeg, pieces, pick);
+    pick === "auto" ? await pickAuto(deps, pieces, !fromFolder) : await pickIds(deps, pieces, pick);
   if ("none" in picked) return picked.none;
   const total = picked.chosen.reduce((sum, each) => sum + each.seconds, 0);
   const out = join(deps.outDir, REFERENCE_FILE);
   await mkdir(deps.outDir, { recursive: true });
+  const { ffmpeg } = await deps.tools();
   await join48(deps, ffmpeg, picked.chosen, out);
-  const used = picked.chosen.map(({ id, audio, text, seconds, meanDb }) => ({
+  const used = picked.chosen.map(({ id, audio, text, seconds, snr }) => ({
     id,
     audio,
     text,
     seconds,
-    meanDb,
+    snr,
   }));
   await writeFile(
     join(deps.outDir, "reference.json"),
     `${JSON.stringify({ at: Date.now(), seconds: total, pieces: used }, null, 2)}\n`,
     "utf8",
   );
-  return answerText(out, total, picked, pick === "auto");
+  return answerText(out, total, picked);
 }
