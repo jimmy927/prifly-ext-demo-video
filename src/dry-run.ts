@@ -16,6 +16,7 @@ import { type LaunchBrowser, type Page, withBrowser } from "./browser";
 import { BackgroundRuns, type Progress, type RunStatus } from "./runs";
 import type { Product, Scene, Step } from "./scenes";
 import { type HarnessPage, sceneUrl } from "./sources/harness";
+import { type LiveDeps, type LiveRuntime, liveRuntime } from "./sources/live";
 import { PROJECTS } from "./sources/projects";
 
 /** How long a step waits for its target to show before it fails. */
@@ -122,6 +123,8 @@ export type SceneRunDeps = {
   page: Page;
   /** The built page of a scene's harness source (cached by the caller). */
   pageOf: (source: HarnessSource) => Promise<HarnessPage>;
+  /** The run's live sources: checked, and signed in once for its one browser. */
+  live?: LiveRuntime;
   /** Saves a scene's still; returns when it was taken. */
   saveStill: (sceneId: string, png: Uint8Array) => Promise<number>;
 };
@@ -186,12 +189,13 @@ export async function runScene(deps: SceneRunDeps, scene: Scene): Promise<SceneR
     still: null,
   };
   const source = scene.source;
-  if (source.kind !== "harness") {
-    result.error = "live sources come in a later version of Demo studio";
-    return result;
-  }
   try {
-    await openScene(deps.page, await deps.pageOf(source), source);
+    if (source.kind === "live") {
+      if (deps.live === undefined) throw new Error("Live scenes are not available in this run");
+      await deps.live.enter(deps.page, source);
+    } else {
+      await openScene(deps.page, await deps.pageOf(source), source);
+    }
   } catch (caught) {
     result.error = caught instanceof Error ? caught.message : String(caught);
     return result;
@@ -244,6 +248,8 @@ export type DryRunDeps = {
     /** A branch or commit of the product's repository; the checkout's HEAD without it. */
     ref?: string,
   ) => Promise<HarnessPage>;
+  /** What a live scene needs: the checkout's shell, its places and a fetch. */
+  live?: LiveDeps;
 };
 
 /** Every scene of a video, in one browser; stills go into `stillsDir`. */
@@ -263,12 +269,14 @@ export async function dryRun(
     await rename(temp, file);
     return Date.now();
   };
+  const live = liveRuntime(deps.live);
+  await live.prepare(scenes);
   const results: SceneResult[] = [];
   if (total > 0) {
     await withBrowser(deps.launch, async (page) => {
       for (const [index, scene] of scenes.entries()) {
         onProgress({ done: index, total, line: `Scene ${index + 1} of ${total}: ${scene.title}` });
-        results.push(await runScene({ page, pageOf, saveStill }, scene));
+        results.push(await runScene({ page, pageOf, live, saveStill }, scene));
       }
     });
   }

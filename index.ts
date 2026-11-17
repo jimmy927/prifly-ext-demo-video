@@ -96,6 +96,7 @@ function realDeps(videoFolder: string): DryRunDeps {
     launch: launchShell,
     harness: (project, targets, progress, ref) =>
       harnessPage({ shell, checkouts, cacheDir, progress }, project, targets, videoFolder, ref),
+    live: { shell, checkouts, fetch },
   };
 }
 
@@ -172,6 +173,7 @@ function realRenderDeps(videoFolder: string): RenderDeps {
     ),
     launch: browser.launch,
     harness: browser.harness,
+    ...(browser.live === undefined ? {} : { live: browser.live }),
     now: Date.now,
   };
 }

@@ -22,7 +22,7 @@ function scenes(...fixtures: Fixture[]): Scene[] {
         ...(each.en === undefined ? {} : { en: each.en }),
       },
       onScreen: each.onScreen ?? "",
-      source: { kind: "live", url: "http://localhost:5301" },
+      source: { kind: "live", project: "odi", path: "/x" },
     })),
   );
   if (!parsed.ok) throw new Error("bad fixture");

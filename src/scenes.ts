@@ -66,7 +66,14 @@ function sceneSchema(strict: boolean) {
       /** A branch or commit of the product's repository; the checkout's HEAD without it. */
       ref: (strict ? gitRef : z.string().min(1)).optional(),
     }),
-    obj({ kind: z.literal("live"), url: z.string().url() }),
+    obj({
+      kind: z.literal("live"),
+      project: z.enum(PRODUCTS),
+      /** Where on the running app; left out when `continue` is true. */
+      path: z.string().startsWith("/", "a path that starts with /").optional(),
+      /** Stay on the previous scene's page: no navigation, no reload. */
+      continue: z.boolean().optional(),
+    }),
   ]);
   return obj({
     id: z.string().regex(/^[a-z0-9][a-z0-9-]{0,47}$/, "an id of lower-case letters, digits and -"),
@@ -80,6 +87,23 @@ function sceneSchema(strict: boolean) {
       status: z.enum(REVIEW_STATUSES).default("pending"),
       notes: z.array(z.string()).default([]),
     }).default({}),
+  }).superRefine((scene, ctx) => {
+    const source = scene.source;
+    if (source.kind !== "live") return;
+    if (source.continue === true && source.path !== undefined) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["source", "path"],
+        message: "a scene that continues stays on the previous page: leave path out",
+      });
+    }
+    if (source.continue !== true && source.path === undefined) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["source", "path"],
+        message: "a live scene that does not continue needs a path, such as /settings/integrations",
+      });
+    }
   });
 }
 
@@ -90,6 +114,51 @@ export type Step = Scene["steps"][number];
 export type Source = Scene["source"];
 
 export type ScenesProblem = { index: number; id: string | null; message: string };
+
+export type LiveSource = Extract<Source, { kind: "live" }>;
+
+/** What a stored script with the old `{kind:"live", url}` source is told. */
+export const LIVE_URL_REFUSED =
+  'source: a live source is {kind:"live", project:"odi", path:"/settings/integrations", continue?:true}; the url form is gone';
+
+function legacyLive(raw: unknown): string | null {
+  if (typeof raw !== "object" || raw === null) return null;
+  const source = (raw as Record<string, unknown>)["source"];
+  if (typeof source !== "object" || source === null) return null;
+  const live = source as Record<string, unknown>;
+  return live["kind"] === "live" && "url" in live ? LIVE_URL_REFUSED : null;
+}
+
+/**
+ * A scene that continues needs the scene before it in the file to be live
+ * and of the same project. `previous` is that scene as parsed (null when it
+ * did not parse or there is none).
+ */
+function continuationProblem(scene: Scene, previous: Scene | null): string | null {
+  const source = scene.source;
+  if (source.kind !== "live" || source.continue !== true) return null;
+  if (previous === null) {
+    return "source.continue: the scene before it is missing or invalid, so there is no page to continue";
+  }
+  if (previous.source.kind !== "live" || previous.source.project !== source.project) {
+    return `source.continue: the scene before it (${previous.id}) must be a live scene of ${source.project}`;
+  }
+  return null;
+}
+
+/** One scene's raw JSON read with `schema`; the scene, or why not. */
+function readScene(
+  schema: { safeParse(raw: unknown): z.SafeParseReturnType<unknown, Scene> },
+  raw: unknown,
+  previous: Scene | null,
+): { scene: Scene } | { message: string } {
+  const legacy = legacyLive(raw);
+  if (legacy !== null) return { message: legacy };
+  const parsed = schema.safeParse(raw);
+  if (!parsed.success) return { message: describe(parsed.error) };
+  const chain = continuationProblem(parsed.data, previous);
+  return chain === null ? { scene: parsed.data } : { message: chain };
+}
 
 function describe(error: z.ZodError): string {
   return error.issues
@@ -124,18 +193,22 @@ export function parseScenesStrict(raw: unknown): StrictScenes {
   const problems: ScenesProblem[] = [];
   const scenes: Scene[] = [];
   const seen = new Set<string>();
+  let before: Scene | null = null;
   list.forEach((each, index) => {
-    const parsed = sceneStrict.safeParse(each);
-    if (!parsed.success) {
-      problems.push({ index, id: idAt(each), message: describe(parsed.error) });
+    const previous = before;
+    before = null;
+    const read = readScene(sceneStrict, each, previous);
+    if ("message" in read) {
+      problems.push({ index, id: idAt(each), message: read.message });
       return;
     }
-    if (seen.has(parsed.data.id)) {
-      problems.push({ index, id: parsed.data.id, message: "id used twice" });
+    if (seen.has(read.scene.id)) {
+      problems.push({ index, id: read.scene.id, message: "id used twice" });
       return;
     }
-    seen.add(parsed.data.id);
-    scenes.push(parsed.data);
+    seen.add(read.scene.id);
+    scenes.push(read.scene);
+    before = read.scene;
   });
   return problems.length > 0 ? { ok: false, problems } : { ok: true, scenes };
 }
@@ -155,19 +228,23 @@ export function readScenesTolerant(raw: unknown): TolerantScenes {
   const scenes: Scene[] = [];
   const problems: ScenesProblem[] = [];
   const seen = new Set<string>();
+  let before: Scene | null = null;
   list.forEach((each, index) => {
-    const parsed = sceneShape.safeParse(each);
-    if (!parsed.success) {
-      problems.push({ index, id: idAt(each), message: describe(parsed.error) });
-    } else if (seen.has(parsed.data.id)) {
+    const previous = before;
+    before = null;
+    const read = readScene(sceneShape, each, previous);
+    if ("message" in read) {
+      problems.push({ index, id: idAt(each), message: read.message });
+    } else if (seen.has(read.scene.id)) {
       problems.push({
         index,
-        id: parsed.data.id,
+        id: read.scene.id,
         message: "id used twice; the later one is left out",
       });
     } else {
-      seen.add(parsed.data.id);
-      scenes.push(parsed.data);
+      seen.add(read.scene.id);
+      scenes.push(read.scene);
+      before = read.scene;
     }
   });
   return { scenes, problems };

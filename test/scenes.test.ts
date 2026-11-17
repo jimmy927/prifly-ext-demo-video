@@ -28,7 +28,7 @@ test("a scene fits and gets its defaults", () => {
 test("strict on write: an unknown field, at any level, is refused with where", () => {
   expect(parseScenesStrict([scene({ colour: "red" })]).ok).toBe(false);
   const nested = parseScenesStrict([
-    scene({ source: { kind: "live", url: "http://x.test", extra: 1 } }),
+    scene({ source: { kind: "live", project: "odi", path: "/x", extra: 1 } }),
   ]);
   expect(nested.ok).toBe(false);
   if (!nested.ok) expect(nested.problems[0]?.id).toBe("pain");
@@ -37,7 +37,9 @@ test("strict on write: an unknown field, at any level, is refused with where", (
 test("strict on write: bad steps, sources and duplicate ids are refused", () => {
   expect(parseScenesStrict([scene({ steps: [{ kind: "click" }] })]).ok).toBe(false);
   expect(parseScenesStrict([scene({ steps: [{ kind: "dance", selector: "a" }] })]).ok).toBe(false);
-  expect(parseScenesStrict([scene({ source: { kind: "live", url: "nope" } })]).ok).toBe(false);
+  expect(
+    parseScenesStrict([scene({ source: { kind: "live", project: "odi", path: "nope" } })]).ok,
+  ).toBe(false);
   const twice = parseScenesStrict([scene(), scene()]);
   expect(twice.ok).toBe(false);
   if (!twice.ok) expect(twice.problems[0]?.message).toBe("id used twice");

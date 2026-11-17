@@ -146,7 +146,7 @@ test("a wait-for passes when the element shows before its time is up", async () 
   expect(result.ok).toBe(true);
 });
 
-test("a page that does not open, and a live source, fail the scene without a still", async () => {
+test("a page that does not open, and a live source without live deps, fail the scene without a still", async () => {
   const page = fakePage({}, { failOpen: "The page did not finish drawing within 15 s" });
   const { deps: d, saved } = deps(page);
   const broken = await runScene(d, scene("a", []));
@@ -155,8 +155,8 @@ test("a page that does not open, and a live source, fail the scene without a sti
     error: "The page did not finish drawing within 15 s",
     still: null,
   });
-  const live = await runScene(d, scene("b", [], { kind: "live", url: "http://localhost:5301/" }));
-  expect(live.error).toContain("live sources");
+  const live = await runScene(d, scene("b", [], { kind: "live", project: "odi", path: "/x" }));
+  expect(live.error).toContain("Live scenes are not available");
   expect(saved).toEqual([]);
 });
 

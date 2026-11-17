@@ -138,6 +138,10 @@ export type Page = {
   cursorTo(x: number, y: number, ms: number): Promise<void>;
   /** A ring under the cursor at (x, y), as a click shows in the frames. */
   pulse(x: number, y: number): Promise<void>;
+  /** Sets one `localStorage` entry of the page's origin (a live scene's sign-in). */
+  setStorage(key: string, value: string): Promise<void>;
+  /** The page's current path (`location.pathname`), after any redirect. */
+  pathname(): Promise<string>;
 };
 
 export type Browser = { page: Page; close(): Promise<void> };
@@ -386,6 +390,10 @@ export function cdpPage(session: CdpSession): Page {
     async pulse(x, y) {
       await evaluate(pulseScript(x, y));
     },
+    async setStorage(key, value) {
+      await evaluate(`void localStorage.setItem(${js(key)}, ${js(value)})`);
+    },
+    pathname: () => evaluate<string>("location.pathname"),
   };
 }
 

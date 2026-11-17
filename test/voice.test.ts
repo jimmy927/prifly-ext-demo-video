@@ -80,13 +80,13 @@ test("voiceAll speaks each scene in each language it has words in", async () => 
       id: "a",
       title: "A",
       narration: { en: "Hello.", sv: "Hej." },
-      source: { kind: "live", url: "http://x.test" },
+      source: { kind: "live", project: "odi", path: "/x" },
     },
     {
       id: "b",
       title: "B",
       narration: { en: "Only English." },
-      source: { kind: "live", url: "http://x.test" },
+      source: { kind: "live", project: "odi", path: "/x" },
     },
   ]);
   const voiced = await voiceAll(deps, dir, scenes, ["sv", "en"], () => EDGE);

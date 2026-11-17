@@ -222,7 +222,7 @@ export function demoTools(
     {
       name: "demo_script_set",
       description:
-        "Writes a video's whole script, scenes.json (the Demo studio's own file, so no confirm card). Each scene: id, title, narration {sv?, en?}, onScreen (at most 15 words, never 'ODI'), source ({kind:'harness', project:'odi'|'prifly', target, state?, ref?} or {kind:'live', url}), steps [{kind: click|hover|scroll|wait-for|zoom-hint|type, selector, ...}], minHoldMs, review. A scene that is unchanged keeps the reader's review. Answers with the narration length against the target length and any house-rule violation; fix those and call again.",
+        "Writes a video's whole script, scenes.json (the Demo studio's own file, so no confirm card). Each scene: id, title, narration {sv?, en?}, onScreen (at most 15 words, never 'ODI'), source ({kind:'harness', project:'odi'|'prifly', target, state?, ref?} or {kind:'live', project:'odi', path:'/settings/integrations', continue?:true}: the real app on the local stack, signed in as the demo user; a continue scene has no path and keeps the previous live scene's page), steps [{kind: click|hover|scroll|wait-for|zoom-hint|type, selector, ...}], minHoldMs, review. A scene that is unchanged keeps the reader's review. Answers with the narration length against the target length and any house-rule violation; fix those and call again.",
       inputSchema: objectSchema(
         {
           video: VIDEO,
@@ -286,7 +286,7 @@ export function demoTools(
     {
       name: "demo_dry_run",
       description:
-        "Dry-runs a video's script: opens every scene's harness page (built from the product's own mockup harness at its checkout's HEAD commit, or at the scene's ref, in a throwaway worktree) in Demo studio's own headless browser, performs each step (click, hover, type, scroll, wait-for; zoom-hint only records its target), checks every target exists, is visible and that each click lands on it, and takes one still per scene for the timeline. Answers with one line, '5 of 5 scenes, every click landed', or the scene, step and selector that failed, then each scene. Waits until it ends (a first build takes about half a minute); only one dry run runs at a time. Changes only the video's own stills.",
+        "Dry-runs a video's script: opens every scene's page (a live scene: the real app on the local dev stack, signed in as the demo user; a harness scene: built from the product's own mockup harness at its checkout's HEAD commit, or at the scene's ref, in a throwaway worktree) in Demo studio's own headless browser, performs each step (click, hover, type, scroll, wait-for; zoom-hint only records its target), checks every target exists, is visible and that each click lands on it, and takes one still per scene for the timeline. Answers with one line, '5 of 5 scenes, every click landed', or the scene, step and selector that failed, then each scene. Waits until it ends (a first build takes about half a minute); only one dry run runs at a time. Changes only the video's own stills.",
       inputSchema: objectSchema({ video: VIDEO }, ["video"]),
       call: async (args, ctx) => {
         const video = videoArg(args);

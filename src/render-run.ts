@@ -27,6 +27,7 @@ import {
 } from "./render";
 import type { Progress } from "./runs";
 import type { Language, Scene } from "./scenes";
+import { liveRuntime } from "./sources/live";
 import { holdMs, LEAD_MS, readTake, recordScene, type Take, takeKey } from "./take";
 import { type Synth, type VoiceChoice, type Voiced, voiceAll } from "./voice";
 
@@ -38,6 +39,7 @@ export type RenderDeps = {
   synth: Synth;
   launch: LaunchBrowser;
   harness: DryRunDeps["harness"];
+  live?: DryRunDeps["live"];
   now: () => number;
 };
 
@@ -104,12 +106,25 @@ export function scenesToTake(
   takes: ReadonlyMap<string, Take | null>,
   redo: RenderOptions["redo"],
 ): Scene[] {
-  return scenes.filter((scene) => {
+  const stale = scenes.map((scene) => {
     if (redo === "all") return true;
     if (scene.review.status === "noted") return true;
     const take = takes.get(scene.id) ?? null;
     return take === null || take.key !== takeKey(scene, holds.get(scene.id) ?? 0);
   });
+  // A live flow is recorded whole: a scene that continues needs the page its
+  // predecessors left, so one stale scene takes its whole chain again.
+  const chains: number[][] = [];
+  for (const [index, scene] of scenes.entries()) {
+    const continues = scene.source.kind === "live" && scene.source.continue === true;
+    if (continues && chains.length > 0) (chains.at(-1) as number[]).push(index);
+    else chains.push([index]);
+  }
+  const taken = new Set<number>();
+  for (const chain of chains) {
+    if (chain.some((index) => stale[index])) for (const index of chain) taken.add(index);
+  }
+  return scenes.filter((_, index) => taken.has(index));
 }
 
 /** Each scene's hold: its minimum, or its longest narration in any language with the lead-in and tail. */
@@ -129,12 +144,12 @@ async function takeScenes(
   holds: ReadonlyMap<string, number>,
   say: (line: string, done: number) => void,
 ): Promise<void> {
-  for (const scene of scenes) {
-    if (scene.source.kind !== "harness") {
-      throw new Error(`Scene ${scene.id} has a live source; live sources come in a later version`);
-    }
-  }
   const pageOf = harnessPages(scenes, deps.harness, (line) => say(line, 0));
+  // Before the browser: the stack, the database and the demo user are checked once.
+  const live = liveRuntime(deps.live);
+  await live.prepare(scenes);
+  const problem = live.firstProblem(scenes);
+  if (problem !== null) throw new Error(problem);
   if (browserBusy()) say("Waiting for the browser: a dry run is using it", 0);
   await withBrowser(deps.launch, async (page) => {
     for (const [index, scene] of scenes.entries()) {
@@ -144,8 +159,8 @@ async function takeScenes(
           page,
           now: deps.now,
           open: async (each) => {
-            if (each.source.kind !== "harness") throw new Error("not a harness scene");
-            await openScene(page, await pageOf(each.source), each.source);
+            if (each.source.kind === "live") await live.enter(page, each.source);
+            else await openScene(page, await pageOf(each.source), each.source);
           },
         },
         scene,

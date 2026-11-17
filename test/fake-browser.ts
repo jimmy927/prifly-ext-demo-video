@@ -23,6 +23,8 @@ export type FakePage = Page & {
   calls: string[];
   opened: { url: string; options: OpenOptions }[];
   shots: number;
+  /** The page's localStorage. */
+  storage: Record<string, string>;
 };
 
 /** A tiny valid PNG's first bytes: enough for the tests to see a PNG was written. */
@@ -35,9 +37,22 @@ export type FakeClock = { t: number };
 
 export function fakePage(
   elements: Record<string, FakeElement>,
-  options: { failOpen?: string; clock?: FakeClock } = {},
+  options: {
+    failOpen?: string;
+    clock?: FakeClock;
+    /** Where the app lands after opening `url`, given the localStorage then; the URL's own path without it. */
+    redirect?: (url: string, storage: Record<string, string>) => string;
+  } = {},
 ): FakePage {
   const clock = options.clock ?? { t: 0 };
+  const storage: Record<string, string> = {};
+  const pathOf = (url: string | undefined) => {
+    try {
+      return new URL(url ?? "about:blank").pathname;
+    } catch {
+      return "/";
+    }
+  };
   let painting: ((jpeg: Uint8Array, atMs: number) => void) | null = null;
   const paint = () => painting?.(JPEG, clock.t);
   const calls: string[] = [];
@@ -56,6 +71,7 @@ export function fakePage(
     calls,
     opened,
     shots: 0,
+    storage,
     async open(url, openOptions) {
       calls.push(`open ${url}`);
       opened.push({ url, options: openOptions });
@@ -118,6 +134,15 @@ export function fakePage(
     },
     async pulse(x, y) {
       calls.push(`pulse ${x},${y}`);
+    },
+    async setStorage(key, value) {
+      calls.push(`storage ${key}`);
+      storage[key] = value;
+    },
+    async pathname() {
+      return (
+        options.redirect?.(opened.at(-1)?.url ?? "", { ...storage }) ?? pathOf(opened.at(-1)?.url)
+      );
     },
   };
   return page;
