@@ -1,5 +1,9 @@
 # Demo studio
 
+![The Demo studio viewer in a prifly session: the player, a timeline with scenes, voice, captions and zoom moments, and the list of versions](docs/screenshot.png)
+
+*The viewer beside the chat, showing an invented video: player, timeline and versions.*
+
 A prifly extension that turns a brief into a script and a storyboard for a narrated product demo video. Claude makes the video (`demo_create`) and writes the script through the `demo_*` tools; there is no panel: videos are made and reviewed in a prifly session, where the viewer (a session view, `demo_open`) sits beside the chat and the reader asks for changes in words.
 
 Brief, script and dry run are tools. The dry run (the `demo_dry_run` tool) builds one page from the product's own mockup harness at its checkout's HEAD commit (or at the commit a scene's `source.ref` names: a branch or commit of the product's repository, fetched from origin when the checkout lacks it), in a throwaway `git worktree` under the video's `build/` folder with the checkout's node_modules linked in. The page is cached in `_harness-cache/`. The dry run then performs every scene's steps in its own chrome-headless-shell (1920×1080, one at a time) and saves one still per scene in `stills/`. On a Windows host the git and build commands run inside WSL through `wsl.exe` (settings: ODI checkout, prifly checkout, WSL distribution). There the worktree sits on WSL's own disk, `~/.cache/prifly-demo-video/build/`, and only the composed page comes back to the host's `_harness-cache/`. The browser is the Windows build of chrome-headless-shell.
