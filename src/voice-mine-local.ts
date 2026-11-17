@@ -23,7 +23,7 @@ import { mkdir, mkdtemp, readFile, rm, stat } from "node:fs/promises";
 import { join } from "node:path";
 import type { Exec } from "./exec";
 import type { Language } from "./scenes";
-import { EDGE_RATE, type Synth, type VoiceChoice } from "./voice";
+import { EDGE_RATE, MINE_READING_VOICE, type Synth, type VoiceChoice } from "./voice";
 
 export type MineChoice = Extract<VoiceChoice, { engine: "seed-vc" }>;
 
@@ -37,14 +37,6 @@ export const NO_GPU = `Voice 'mine' needs a CUDA GPU: torch found none. ${CLOUD_
 export const NO_PYTHON = `Voice 'mine' needs its Python environment (prifly builds it from the extension's pyproject.toml when it starts; restart prifly and check its log). ${CLOUD_HINT}`;
 export const ONLY_ENGLISH = (languages: readonly Language[]) =>
   `Voice 'mine' speaks English only; this video's languages are ${languages.join(", ")}: use voice "draft" or "final" for it`;
-
-/**
- * The Edge voice that is read first: always Ryan, a male British voice. Seed-VC moves the reading's
- * pitch to the reader's own, and a female reading (Sonia, ~200 Hz) dropped an octave to a male
- * reader's ~120 Hz sounded slow and sad; Ryan (~130 Hz) needs almost no shift. The reader picked
- * this pairing by ear (Ryan + variant B). The configured draft voice does not change it.
- */
-export const MINE_READING_VOICE = "en-GB-RyanNeural";
 
 export function readingVoice(_configuredEn: string): string {
   return MINE_READING_VOICE;

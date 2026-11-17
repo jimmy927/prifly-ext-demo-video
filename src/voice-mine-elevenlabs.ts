@@ -15,7 +15,7 @@ import { createHash } from "node:crypto";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Language } from "./scenes";
-import { EDGE_RATE, type Fetch } from "./voice";
+import { EDGE_RATE, type Fetch, MINE_READING_VOICE } from "./voice";
 
 const API = "https://api.elevenlabs.io";
 
@@ -208,7 +208,11 @@ export async function stsSynth(
   return new Uint8Array(await response.arrayBuffer());
 }
 
-/** The voice of one language for Mine (ElevenLabs): Edge's configured voice for it, then the clone. */
+/**
+ * The voice of one language for Mine (ElevenLabs): Edge reads English with `MINE_READING_VOICE`
+ * (whatever draft voice is set), then the clone. Another language has no English reading voice,
+ * so it keeps its configured Edge voice. The source voice is part of the cache key.
+ */
 export function mineChoice(
   settings: { edge: Readonly<Record<Language, string>> },
   language: Language,
@@ -218,7 +222,7 @@ export function mineChoice(
     engine: "elevenlabs-sts",
     voice: cloneVoiceId,
     model: STS_MODEL,
-    source: settings.edge[language],
+    source: language === "en" ? MINE_READING_VOICE : settings.edge[language],
     rate: EDGE_RATE,
   };
 }

@@ -37,6 +37,14 @@ export const EDGE_VOICES: Readonly<Record<Language, readonly string[]>> = {
 /** Narration is spoken at the voice's own pace: `timing.ts` counts 2.5 words a second for it. */
 export const EDGE_RATE = "+0%";
 
+/**
+ * The Edge voice that is read first, for both `voice: "mine"` and `voice: "mine-elevenlabs"` (English): always Ryan, a male British voice. Seed-VC moves the reading's
+ * pitch to the reader's own, and a female reading (Sonia, ~200 Hz) dropped an octave to a male
+ * reader's ~120 Hz sounded slow and sad; Ryan (~130 Hz) needs almost no shift. The reader picked
+ * this pairing by ear (Ryan + variant B). The configured draft voice does not change it.
+ */
+export const MINE_READING_VOICE = "en-GB-RyanNeural";
+
 export const ELEVENLABS_MODEL = "eleven_multilingual_v2";
 
 export type VoiceChoice =

@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import * as extension from "../index";
 import { voiceLabel } from "../src/versions";
-import { voiceKey } from "../src/voice";
+import { MINE_READING_VOICE, voiceKey } from "../src/voice";
 import {
   type CloneDeps,
   deleteClone,
@@ -124,7 +124,7 @@ test("the voice change sends the Edge MP3, the model id and the clone's voice id
     choice,
   );
   expect(Array.from(out)).toEqual([9, 9, 9]);
-  expect(spoken).toEqual(["en-GB-SoniaNeural +0%: Hello there"]);
+  expect(spoken).toEqual(["en-GB-RyanNeural +0%: Hello there"]);
   const [call] = eleven.calls;
   expect(call?.method).toBe("POST");
   expect(call?.url).toBe(
@@ -139,10 +139,35 @@ test("the scene's cache key changes with the clone, the Edge voice and the model
   const a = mineChoice({ edge: EDGE }, "en", "clone-1");
   const key = (choice: typeof a) => voiceKey("Hi", choice);
   expect(key(a)).not.toBe(key(mineChoice({ edge: EDGE }, "en", "clone-2")));
-  expect(key(a)).not.toBe(
-    key(mineChoice({ edge: { ...EDGE, en: "en-GB-RyanNeural" } }, "en", "clone-1")),
-  );
+  expect(key(a)).not.toBe(key({ ...a, source: "en-GB-SoniaNeural" }));
   expect(key(a)).not.toBe(key({ ...a, model: "other" }));
+});
+
+test("Edge reads English with Ryan whatever draft voice is configured, and the Sonia cache is not reused", async () => {
+  const choice = mineChoice({ edge: EDGE }, "en", "clone-9");
+  expect(EDGE.en).toBe("en-GB-SoniaNeural");
+  expect(choice.source).toBe(MINE_READING_VOICE);
+  expect(choice.source).toBe("en-GB-RyanNeural");
+  expect(mineChoice({ edge: { ...EDGE, en: "en-US-AriaNeural" } }, "en", "clone-9")).toEqual(
+    choice,
+  );
+  expect(mineChoice({ edge: EDGE }, "sv", "clone-9").source).toBe("sv-SE-SofieNeural");
+  const spoken: string[] = [];
+  await stsSynth(
+    fakeEleven().fetcher,
+    "k",
+    async (_text, voice) => {
+      spoken.push(voice);
+      return Uint8Array.from([1]);
+    },
+    "Hi",
+    choice,
+  );
+  expect(spoken).toEqual(["en-GB-RyanNeural"]);
+  // A scene converted from the old Sonia reading has a different key, so it is converted again.
+  expect(voiceKey("Hi", choice)).not.toBe(
+    voiceKey("Hi", { ...choice, source: "en-GB-SoniaNeural" }),
+  );
 });
 
 test("errors are one clear line: no key, no reference, plan refuses cloning, rate limit", async () => {
@@ -233,7 +258,7 @@ test("demo_render with mine-elevenlabs clones once, voices through the clone and
       engine: "elevenlabs-sts",
       voice: "clone-1",
       model: STS_MODEL,
-      source: "en-GB-SoniaNeural",
+      source: "en-GB-RyanNeural",
       rate: "+0%",
     },
   ]);
@@ -243,7 +268,7 @@ test("demo_render with mine-elevenlabs clones once, voices through the clone and
     engine: "elevenlabs-sts",
     voices: { en: "clone-1" },
     model: STS_MODEL,
-    source: { en: "en-GB-SoniaNeural" },
+    source: { en: "en-GB-RyanNeural" },
   });
   const state = await s.askView({ video: id });
   expect(`Voice: ${state.versions[0].voice}`).toBe("Voice: Mine (ElevenLabs)");
